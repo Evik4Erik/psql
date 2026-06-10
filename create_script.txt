@@ -7,7 +7,7 @@ CREATE TABLE catalog.product_categories (
 
 CREATE TABLE catalog.products (
 	id serial PRIMARY KEY,
-	sku VARCHAR(30) UNIQUE CHECK (lebgth(sku) <= 30) NOT NULL,
+	sku VARCHAR(30) UNIQUE NOT NULL,
 	name TEXT NOT NULL,
 	price DECIMAL NOT NULL,
 	category_id INT REFERENCES product_categories (id) NOT NULL	
@@ -18,7 +18,5 @@ CREATE TABLE catalog.warehouses (
 	city TEXT NOT NULL,
 	address TEXT NOT NULL,
 	label TEXT,
-	is_serial BOOLEAN
+	is_central BOOLEAN
 );
-
-#ALTER TABLE products ADD CONSTRAINT sku_length CHECK (length(sku) <= 30)
