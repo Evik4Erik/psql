@@ -11,7 +11,7 @@ from db import get_conn
 from validators import PriceValidator, NonEmptyValidator, YesNoValidator
 
 from commands import command, CATEGORY_PRODUCTS
-
+from .product_category import _get_list_category
 
 @dataclass
 class Product:
@@ -105,12 +105,18 @@ def add_product() -> None:
     Запрашивает у пользователя: SKU, название, цену и категорию.
     Используйте prompt с валидаторами для ввода данных.
     """
+
+    category_list = _get_list_category()    
+    category_validator = ChoiceValidator(
+        category_list, message="Склад должен быть из списка. Используйте Tab для автодополнения."
+    )
+
     conn = get_conn()
     # TO DO - limit 30 liters
     sku = prompt("Артикул: ", validator=NonEmptyValidator()).strip()
     name = prompt("Наименование: ", validator=NonEmptyValidator()).strip()
     price = prompt("Цена: ", validator=PriceValidator())
-    category_id = prompt("Категория: ", validator=NonEmptyValidator()).strip()) 
+    category_id = prompt("Категория: ", validator=category_validator).strip()) 
     conn.execute(
         "INSERT INTO catalog.products (sku, name, price, category_id) VALUES (%s, %s, %s, %s)",
         (sku, name, price, category_id),
