@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<diagram version="1" name="er_schema">
+	<entities>
+		<data-source id="postgres-jdbc-1875c2f4024-771e4e4458c293a5">
+			<entity id="1" name="product_categories" fq-name="&quot;catalog&quot;.product_categories">
+				<path name="catalog"/>
+				<path name="inventorydb"/>
+			</entity>
+			<entity id="2" name="products" fq-name="&quot;catalog&quot;.products">
+				<path name="catalog"/>
+				<path name="inventorydb"/>
+			</entity>
+			<entity id="3" name="warehouses" fq-name="&quot;catalog&quot;.warehouses">
+				<path name="catalog"/>
+				<path name="inventorydb"/>
+			</entity>
+			<entity id="4" name="order_items" fq-name="sales.order_items">
+				<path name="sales"/>
+				<path name="inventorydb"/>
+			</entity>
+			<entity id="5" name="orders" fq-name="sales.orders">
+				<path name="sales"/>
+				<path name="inventorydb"/>
+			</entity>
+		</data-source>
+	</entities>
+	<relations>
+		<relation name="products_category_id_fkey" fq-name="&quot;catalog&quot;.products.products_category_id_fkey" type="fk" pk-ref="1" fk-ref="2"/>
+		<relation name="order_items_product_id_fkey" fq-name="sales.order_items.order_items_product_id_fkey" type="fk" pk-ref="2" fk-ref="4"/>
+		<relation name="orders_warehouse_id_fkey" fq-name="sales.orders.orders_warehouse_id_fkey" type="fk" pk-ref="3" fk-ref="5"/>
+		<relation name="order_items_order_id_fkey" fq-name="sales.order_items.order_items_order_id_fkey" type="fk" pk-ref="5" fk-ref="4"/>
+	</relations>
+</diagram>
