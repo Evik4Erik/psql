@@ -141,11 +141,17 @@ def edit_product(_id: str) -> None:
         render_error(f"Товар с ID {_id} не найден")
         return
 
+    category_list = _get_list_category()    
+
+    category_validator = ChoiceValidator(
+        category_list, message="Склад должен быть из списка. Используйте Tab для автодополнения."
+    )
+
     sku = prompt("Артикул: ", default=product.sku, validator=NonEmptyValidator()).strip()
     name = prompt("Наименование: ", default=product.name, validator=NonEmptyValidator()).strip()
     price = prompt("Цена: ", default=product.price, validator=PriceValidator())
     category_id = (
-        prompt("Категория: ", default=product.category, validator=NonEmptyValidator()).strip() or None
+        prompt("Категория: ", default=product.category, validator=category_validator).strip() or None
     )
     conn.execute(
         """UPDATE catalog.products SET sku = %s, name = %s, price = %s, category_id = %s
