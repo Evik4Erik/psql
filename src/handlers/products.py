@@ -36,7 +36,7 @@ def _render_product(product: Product):  # pylint: disable=unused-argument
     table.add_row("SKU", product.sku)
     table.add_row("Наименование", product.name)
     table.add_row("Цена", str(product.price))
-    table.add_row("Категория", str(product.category_id) or "")
+    table.add_row("Категория", str(product.category_id))
 
     panel = Panel(
         table,
@@ -74,7 +74,7 @@ def list_products() -> None:
             product.sku,
             product.name,
             str(product.price),
-            str(product.category_id) or "",
+            str(product.category_id),
         )
     console.print(table)
 
@@ -110,7 +110,7 @@ def add_product() -> None:
     sku = prompt("Артикул: ", validator=NonEmptyValidator()).strip()
     name = prompt("Наименование: ", validator=NonEmptyValidator()).strip()
     price = prompt("Цена: ", validator=PriceValidator())
-    category_id = prompt("Категория (необязательно): ") or None
+    category_id = prompt("Категория: ", validator=NonEmptyValidator()).strip()) 
     conn.execute(
         "INSERT INTO catalog.products (sku, name, price, category_id) VALUES (%s, %s, %s, %s)",
         (sku, name, price, category_id),
@@ -139,7 +139,7 @@ def edit_product(_id: str) -> None:
     name = prompt("Наименование: ", default=product.name, validator=NonEmptyValidator()).strip()
     price = prompt("Цена: ", default=product.price, validator=PriceValidator())
     category_id = (
-        prompt("Категория (необязательно): ", default=product.category or "").strip() or None
+        prompt("Категория: ", default=product.category, validator=NonEmptyValidator()).strip() or None
     )
     conn.execute(
         """UPDATE catalog.products SET sku = %s, name = %s, price = %s, category_id = %s
