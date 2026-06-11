@@ -1,17 +1,35 @@
 from dataclasses import dataclass
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timezone
 
 from rich.panel import Panel
 from rich.table import Table
 from psycopg.rows import class_row
 from prompt_toolkit import prompt
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.shortcuts import choice
 
 from commands import command, CATEGORY_ORDERS
 from console import console, render_error
 from db import get_conn
-from validators import PriceValidator, NonEmptyValidator, YesNoValidator
+from validators import PriceValidator, NonEmptyValidator, YesNoValidator, ChoiceValidator
 
+from .warehouses import get_list_warehouses
+
+
+states = [
+    'unpublished',
+    'new', 
+    'processing', 
+    'pending', 
+    'packing', 
+    'shipped'
+]
+
+states_completer = WordCompleter(states, ignore_case=True, sentence=True)
+states_validator = ChoiceValidator(
+    states, message="Статус должен быть из списка. Используйте Tab для автодополнения."
+)
 
 @dataclass
 class Order:
@@ -54,15 +72,121 @@ def list_products() -> None:
     table.add_column("Warehouse", style="blue", min_width=20)
 
     with conn.cursor(row_factory=class_row(Order)) as cur:
-        cur.execute("SELECT * FROM catalog.products")
-        products: list[Order] = cur.fetchall()
+        cur.execute("SELECT * FROM sales.orders")
+        orders: list[Order] = cur.fetchall()
 
-    for product in products:
+    for order in orders:
         table.add_row(
-            str(product.id),
-            product.status,
-            str(product.total_amount),
-            str(product.created_at),
-            str(product.warehouse_id),
+            str(order.id),
+            order.status,
+            str(order.total_amount),
+            str(order.created_at),
+            str(order.warehouse_id),
         )
     console.print(table)
+
+@command("show order", "информация о заказе", CATEGORY_ORDERS)
+def show_order(_id: str) -> None:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Order)) as cur:
+        cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
+        order: Order | None = cur.fetchone()
+
+    if order is None:
+        render_error(f"Заказ с ID {_id} не найден")
+        return
+
+    _render_order(order)
+
+
+@command("add order", "добавить заказ (интерактивно)", CATEGORY_ORDERS)
+def add_order() -> None:
+    conn = get_conn()
+    status = prompt("Статус: ", validator=states_validator, completer=states_completer, default='unpublished').strip()
+    total_amount = prompt("Стоимость: ", validator=PriceValidator()).strip()
+    created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S") # Output: 2026-06-11T12:40:00.123456+00:00
+    #prompt("Дата создания: ", validator=DateValidator()).strip() # TO DO date validator
+    warehouse_id = choice(
+        message="Склад: ",
+        options= get_list_warehouses(),
+        default="",
+    )
+    conn.execute(
+        "INSERT INTO sales.orders (status, total_amount, created_at, warehouse_id) VALUES (%s, %s, %s, %s)",
+        (status, total_amount, created_at, warehouse_id),
+    )
+    
+    console.print(f"[green]Заказ добавлен [/green]")
+
+
+@command("edit order", "редактировать заказ", CATEGORY_ORDERS)
+def edit_order(_id: str) -> None:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Order)) as cur:
+        cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
+        order: Order | None = cur.fetchone()
+
+    if order is None:
+        render_error(f"Заказ с ID {_id} не найден")
+        return
+    
+    if order.status == 'new':
+        console.print(f"[yellow]Заказ {order.id} не может быть отредактирован [/yellow]")
+        return
+
+    total_amount = prompt("Стоимость: ", validator=PriceValidator()).strip()
+    warehouse_id = choice(
+        message="Склад: ",
+        options= get_list_warehouses(),
+        default="",
+    )
+
+    conn.execute(
+        """UPDATE sales.orders SET  total_amount = %s, warehouse_id = %s
+        WHERE id = %s""",
+        (total_amount, warehouse_id, _id),
+    )
+
+    console.print(f"[green]Заказ {order.id} обновлен [/green]")
+
+
+@command("delete order", "удалить заказ", CATEGORY_ORDERS)
+def delete_order(_id: str) -> None:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Order)) as cur:
+        cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
+        order: Order | None = cur.fetchone()
+
+    if order is None:
+        render_error(f"Заказ с ID {_id} не найден")
+        return
+
+    _render_order(order)
+
+    if order.status == 'new':
+        console.print(f"[yellow]Заказ {order.id} не может быть удален [/yellow]")
+        return
+
+    answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
+
+    if YesNoValidator.is_yes(answer):
+        conn.execute("DELETE FROM sales.orders WHERE id = %s", (_id,))
+        console.print(f"[green]Заказ {order.id} удален [/green]")
+
+
+@command("publish order", "опубликовать заказ", CATEGORY_ORDERS)
+def publish_order(_id: str) -> None:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Order)) as cur:
+        cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
+        order: Order | None = cur.fetchone()
+
+    if order is None:
+        render_error(f"Заказ с ID {_id} не найден")
+        return
+
+    conn.execute(
+        """UPDATE sales.orders SET  status = %s WHERE id = %s""", ('new', _id),
+    )
+
+    console.print(f"[green]Заказ {order.id} опубликован [/green]")
