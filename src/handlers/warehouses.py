@@ -76,6 +76,20 @@ def _central_warehouse_exists() -> bool:
         return True
 
     return False
+    
+
+def get_list_warehouses()-> list[tuple[str,str]]:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Warehouse)) as cur:
+        cur.execute("SELECT id, city, address, label, is_central FROM catalog.warehouses")
+        warehouses: list[Warehouse] = cur.fetchall()
+
+        list_tupl= [
+            (str(war.id), str(war.city) + " "+ str(war.address))
+            for war in warehouses
+        ]
+
+        return list_tupl
 
 
 @command("list warehouses", "список всех складов", CATEGORY_WAREHOUSES)
