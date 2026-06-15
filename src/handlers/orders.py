@@ -12,9 +12,10 @@ from prompt_toolkit.shortcuts import choice
 from commands import command, CATEGORY_ORDERS
 from console import console, render_error
 from db import get_conn
-from validators import PriceValidator, NonEmptyValidator, YesNoValidator, ChoiceValidator
+from validators import PriceValidator, NonEmptyValidator, YesNoValidator, ChoiceValidator, PositiveIntValidator
 
 from .warehouses import get_list_warehouses
+from .products import get_list_products
 
 
 states = [
@@ -39,6 +40,14 @@ class Order:
     created_at: datetime
     warehouse_id: int
 
+@dataclass
+class Order_item:
+    id: int
+    price: Decimal
+    quantity: int
+    product_id: int
+    order_id: int
+
 def _render_order(order: Order):  # pylint: disable=unused-argument
     table = Table(show_header=False, box=None, padding=(0, 2))
 
@@ -59,6 +68,29 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
     )
 
     console.print(panel)
+
+    table = Table(title="Order_items", show_header=True, header_style="bold cyan")
+
+    table.add_column("ID", style="dim", width=6, justify="right")
+    table.add_column("Price", style="green", min_width=20)
+    table.add_column("Quantity", style="yellow", min_width=30)
+    table.add_column("Product_id", style="magenta", min_width=15)
+    table.add_column("Order_id", style="blue", min_width=20)
+
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Order_item)) as cur:
+        cur.execute("SELECT * FROM sales.order_items WHERE order_id = %s", (order.id,))
+        order_items: list[Order_item] = cur.fetchall()
+
+    for items in order_items:
+        table.add_row(
+            str(items.id),
+            str(items.price),
+            str(items.quantity),
+            str(items.product_id),
+            str(items.order_id),
+        )
+    console.print(table)
 
 @command("list orders", "список всех orders", CATEGORY_ORDERS)
 def list_products() -> None:
@@ -190,3 +222,46 @@ def publish_order(_id: str) -> None:
     )
 
     console.print(f"[green]Заказ {order.id} опубликован [/green]")
+
+@command("add order_item", "добавить позицию в заказ", CATEGORY_ORDERS)
+def add_order_item(order_id: str) -> None:  
+    conn = get_conn()
+
+    product_id = choice(
+        message="Товар: ",
+        options= get_list_products(),
+        default="",
+    )
+
+    price = 0.
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT price FROM catalog.products WHERE id = %s", (product_id,))
+        row = cur.fetchone()
+        if(row):
+            price = row[0]
+
+    #price = prompt("Стоимость: ", validator=PriceValidator()).strip()
+    quantity = prompt("Количество: ", validator=PositiveIntValidator()).strip()
+
+    conn.execute(
+        "INSERT INTO sales.order_items (price, quantity, product_id, order_id) VALUES (%s, %s, %s, %s)",
+        (price, quantity, product_id, order_id),
+    )
+    
+    console.print(f"[green]Позиция добавлена [/green]")
+
+    recalc_order(order_id)
+
+def recalc_order(order_id: str) -> None: 
+    conn = get_conn()
+    total_amount = 0.
+    with conn.cursor() as cur:
+        cur.execute("SELECT price, quantity FROM sales.order_items WHERE order_id = %s", (order_id,))
+        rows = cur.fetchall()
+        for row in rows:
+            total_amount += int(row[0]) * float(row[1])
+
+        conn.execute(
+            """UPDATE sales.orders SET total_amount = %s WHERE id = %s""", (total_amount, order_id),
+        )
