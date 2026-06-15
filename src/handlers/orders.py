@@ -235,7 +235,7 @@ def add_order_item(order_id: str) -> None:
         default="",
     )
 
-    price = 0.
+    price = Decimal()
 
     with conn.cursor() as cur:
         cur.execute("SELECT price FROM catalog.products WHERE id = %s", (product_id,))
@@ -262,7 +262,7 @@ def recalc_order(order_id: str) -> None:
         cur.execute("SELECT price, quantity FROM sales.order_items WHERE order_id = %s", (order_id,))
         rows = cur.fetchall()
         for row in rows:
-            total_amount += int(row[0]) * float(row[1])
+            total_amount += int(row[0]) * Decimal(row[1])
 
         conn.execute(
             """UPDATE sales.orders SET total_amount = %s WHERE id = %s""", (total_amount, order_id),
