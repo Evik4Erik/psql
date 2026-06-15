@@ -78,7 +78,19 @@ def list_products() -> None:
             str(product.category_id),
         )
     console.print(table)
+    
+def get_list_products()-> list[tuple[str,str]]:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Product)) as cur:
+        cur.execute("SELECT id, sku, name, price, category_id FROM catalog.products")
+        products: list[Product] = cur.fetchall()
 
+        list_tupl= [
+            (str(prod.id), str(prod.sku) + str(prod.name))
+            for prod in products
+        ]
+
+        return list_tupl
 
 @command("show product", "информация о товаре", CATEGORY_PRODUCTS)
 def show_product(_id: str) -> None:
