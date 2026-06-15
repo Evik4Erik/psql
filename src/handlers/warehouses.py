@@ -173,38 +173,22 @@ def edit_warehouse(_id: str) -> None:
             prompt("Метка (необязательно): ", default=warehouse.label or "").strip() or None
     )
 
-# TO DO check
-    set_is_central = False
+    answer = prompt("Wanna set is central? (y/n, д/н): ", validator=YesNoValidator())
+    set_is_central = YesNoValidator.is_yes(answer)
 
     if not warehouse.is_central:
         set_is_central = prompt("Is central: ", default=str(warehouse.is_central)).strip()
 
     if not warehouse.is_central and set_is_central:
-        old_id = 0
-        with conn.cursor(row_factory=class_row(Warehouse)) as cur:
-            cur.execute("SELECT * FROM catalog.warehouses WHERE is_central")
-            old_warehouse: Warehouse | None = cur.fetchone()
-
-            if old_warehouse is None:
-                return;
-
-            old_id = old_warehouse.id
-
         conn.execute(
-            """UPDATE catalog.warehouses SET city = %s, address = %s, label = %s, is_central = %s
-            WHERE id = %s""",
-            (city, address, label, set_is_central, _id),
+            """UPDATE catalog.warehouses SET is_central = false WHERE is_central = true""",
         )
 
-        conn.execute(
-            """UPDATE catalog.warehouses SET is_central = false WHERE id = %s""", (old_id,)
-        )
-    else:
-        conn.execute(
-            """UPDATE catalog.warehouses SET city = %s, address = %s, label = %s
-            WHERE id = %s""",
-            (city, address, label, _id),
-        )
+    conn.execute(
+        """UPDATE catalog.warehouses SET city = %s, address = %s, label = %s, is_central = %s
+        WHERE id = %s""",
+        (city, address, label, set_is_central, _id),
+    )
 
     if label:
         console.print(f"[green]Склад в городе {city} ({label}) обновлен [/green]")

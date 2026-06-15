@@ -37,10 +37,10 @@ CREATE TABLE sales.orders (
 ALTER TABLE sales.orders ADD CONSTRAINT status_constraint CHECK (status in ( 'unpublished', 'new', 'processing', 'pending', 'packing', 'shipped'));
 
 CREATE TABLE sales.order_items (
-	id serial PRIMARY KEY,
 	price DECIMAL(10,2) NOT NULL,
 	quantity INT NOT NULL,
 	product_id INT REFERENCES catalog.products (id)  NOT NULL,
 	order_id INT REFERENCES sales.orders (id)  NOT NULL,
-    CONSTRAINT unique_items UNIQUE (product_id, order_id);
+	PRIMARY KEY (order_id, item_id)
+    	CONSTRAINT unique_items UNIQUE (product_id, order_id);
 );

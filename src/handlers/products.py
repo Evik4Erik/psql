@@ -5,6 +5,7 @@ from rich.panel import Panel
 from rich.table import Table
 from psycopg.rows import class_row
 from prompt_toolkit import prompt
+from sqlalchemy.dialects.oracle import dictionary
 
 from console import console, render_error
 from db import get_conn
@@ -13,6 +14,7 @@ from validators import PriceValidator, NonEmptyValidator, YesNoValidator
 from commands import command, CATEGORY_PRODUCTS
 from .product_category import _get_list_category
 from prompt_toolkit.shortcuts import choice
+
 
 @dataclass
 class Product:
@@ -78,19 +80,21 @@ def list_products() -> None:
             str(product.category_id),
         )
     console.print(table)
-    
-def get_list_products()-> list[tuple[str,str]]:
+
+
+def get_list_products() -> dictionary:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Product)) as cur:
         cur.execute("SELECT id, sku, name, price, category_id FROM catalog.products")
         products: list[Product] = cur.fetchall()
 
-        list_tupl= [
-            (str(prod.id), str(prod.sku) + str(prod.name))
-            for prod in products
-        ]
+        diction = {}
 
-        return list_tupl
+        for prod in products:
+            diction[str(prod.id)] = (str(prod.sku) + " " + str(prod.name))
+
+        return diction
+
 
 @command("show product", "информация о товаре", CATEGORY_PRODUCTS)
 def show_product(_id: str) -> None:
@@ -126,7 +130,7 @@ def add_product() -> None:
     price = prompt("Цена: ", validator=PriceValidator())
     category_id = choice(
         message="Категория: ",
-        options= _get_list_category(),
+        options=_get_list_category(),
         default="",
     )
 

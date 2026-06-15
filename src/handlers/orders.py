@@ -8,6 +8,7 @@ from psycopg.rows import class_row
 from prompt_toolkit import prompt
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.shortcuts import choice
+from sqlalchemy.dialects.oracle import dictionary
 
 from commands import command, CATEGORY_ORDERS
 from console import console, render_error
@@ -17,13 +18,12 @@ from validators import PriceValidator, NonEmptyValidator, YesNoValidator, Choice
 from .warehouses import get_list_warehouses
 from .products import get_list_products
 
-
 states = [
     'unpublished',
-    'new', 
-    'processing', 
-    'pending', 
-    'packing', 
+    'new',
+    'processing',
+    'pending',
+    'packing',
     'shipped'
 ]
 
@@ -31,6 +31,14 @@ states_completer = WordCompleter(states, ignore_case=True, sentence=True)
 states_validator = ChoiceValidator(
     states, message="Статус должен быть из списка. Используйте Tab для автодополнения."
 )
+
+products = []
+
+products_completer = WordCompleter(products, ignore_case=True, sentence=True)
+products_validator = ChoiceValidator(
+    products, message="Product должен быть из списка. Используйте Tab для автодополнения."
+)
+
 
 @dataclass
 class Order:
@@ -40,6 +48,7 @@ class Order:
     created_at: datetime
     warehouse_id: int
 
+
 @dataclass
 class Order_item:
     id: int
@@ -47,6 +56,7 @@ class Order_item:
     quantity: int
     product_id: int
     order_id: int
+
 
 def _render_order(order: Order):  # pylint: disable=unused-argument
     table = Table(show_header=False, box=None, padding=(0, 2))
@@ -92,6 +102,7 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
         )
     console.print(table)
 
+
 @command("list orders", "список всех orders", CATEGORY_ORDERS)
 def list_products() -> None:
     conn = get_conn()
@@ -117,6 +128,7 @@ def list_products() -> None:
         )
     console.print(table)
 
+
 @command("show order", "информация о заказе", CATEGORY_ORDERS)
 def show_order(_id: str) -> None:
     conn = get_conn()
@@ -135,19 +147,20 @@ def show_order(_id: str) -> None:
 def add_order() -> None:
     conn = get_conn()
     status = prompt("Статус: ", validator=states_validator, completer=states_completer, default='unpublished').strip()
-    total_amount = prompt("Стоимость: ", validator=PriceValidator()).strip()
-    created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S") # Output: 2026-06-11T12:40:00.123456+00:00
+    total_amount = 0
+    #total_amount = prompt("Стоимость: ", validator=PriceValidator()).strip()
+    created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Output: 2026-06-11T12:40:00.123456+00:00
     #prompt("Дата создания: ", validator=DateValidator()).strip() # TO DO date validator
     warehouse_id = choice(
         message="Склад: ",
-        options= get_list_warehouses(),
+        options=get_list_warehouses(),
         default="",
     )
     conn.execute(
         "INSERT INTO sales.orders (status, total_amount, created_at, warehouse_id) VALUES (%s, %s, %s, %s)",
         (status, total_amount, created_at, warehouse_id),
     )
-    
+
     console.print(f"[green]Заказ добавлен [/green]")
 
 
@@ -161,7 +174,7 @@ def edit_order(_id: str) -> None:
     if order is None:
         render_error(f"Заказ с ID {_id} не найден")
         return
-    
+
     if order.status != 'unpublished':
         console.print(f"[yellow]Заказ {order.id} не может быть отредактирован [/yellow]")
         return
@@ -169,7 +182,7 @@ def edit_order(_id: str) -> None:
     total_amount = prompt("Стоимость: ", validator=PriceValidator()).strip()
     warehouse_id = choice(
         message="Склад: ",
-        options= get_list_warehouses(),
+        options=get_list_warehouses(),
         default="",
     )
 
@@ -216,7 +229,7 @@ def publish_order(_id: str) -> None:
     if order is None:
         render_error(f"Заказ с ID {_id} не найден")
         return
-        
+
     answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
 
     if YesNoValidator.is_yes(answer):
@@ -225,39 +238,62 @@ def publish_order(_id: str) -> None:
         )
         console.print(f"[green]Заказ {order.id} опубликован [/green]")
 
+
 @command("add order_item", "добавить позицию в заказ", CATEGORY_ORDERS)
-def add_order_item(order_id: str) -> None:  
+def add_order_item(order_id: str) -> None:
     conn = get_conn()
 
-    product_id = choice(
-        message="Товар: ",
-        options= get_list_products(),
-        default="",
-    )
+    global products
+    products.clear()
 
-    price = Decimal()
+    products_tmp: dictionary = get_list_products()
 
-    with conn.cursor() as cur:
-        cur.execute("SELECT price FROM catalog.products WHERE id = %s", (product_id,))
-        row = cur.fetchone()
-        if(row):
-            price = row[0]
+    for key, value in products_tmp.items():
+        products.append(value)
 
-    #price = prompt("Стоимость: ", validator=PriceValidator()).strip()
-    quantity = prompt("Количество: ", validator=PositiveIntValidator()).strip()
+    enter_product = True
 
-    conn.execute(
-        "INSERT INTO sales.order_items (price, quantity, product_id, order_id) VALUES (%s, %s, %s, %s)",
-        (price, quantity, product_id, order_id),
-    )
-    
-    console.print(f"[green]Позиция добавлена [/green]")
+    while enter_product:
+        product: str = prompt(
+            "Product: ",
+            validator=products_validator,
+            completer=products_completer,
+        ).strip()
+
+        '''product_id = choice(
+            message="Товар: ",
+            options=get_list_products(),
+            default="",
+        )'''
+
+        product_id = next((k for k, v in products_tmp.items() if v == product))
+
+        price = Decimal()
+
+        with conn.cursor() as cur:
+            cur.execute("SELECT price FROM catalog.products WHERE id = %s", (product_id,))
+            row = cur.fetchone()
+            if row:
+                price = row[0]
+
+        quantity = prompt("Количество: ", validator=PositiveIntValidator()).strip()
+
+        conn.execute(
+            "INSERT INTO sales.order_items (price, quantity, product_id, order_id) VALUES (%s, %s, %s, %s)",
+            (price, quantity, product_id, order_id),
+        )
+
+        console.print(f"[green]Позиция добавлена [/green]")
+
+        answer = prompt("Wanna continue adding items? (y/n, д/н): ", validator=YesNoValidator())
+        enter_product = YesNoValidator.is_yes(answer)
 
     recalc_order(order_id)
 
-def recalc_order(order_id: str) -> None: 
+
+def recalc_order(order_id: str) -> None:
     conn = get_conn()
-    total_amount = 0.
+    total_amount = Decimal()
     with conn.cursor() as cur:
         cur.execute("SELECT price, quantity FROM sales.order_items WHERE order_id = %s", (order_id,))
         rows = cur.fetchall()
