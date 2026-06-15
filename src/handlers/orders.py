@@ -162,7 +162,7 @@ def edit_order(_id: str) -> None:
         render_error(f"Заказ с ID {_id} не найден")
         return
     
-    if order.status == 'new':
+    if order.status != 'unpublished':
         console.print(f"[yellow]Заказ {order.id} не может быть отредактирован [/yellow]")
         return
 
@@ -195,7 +195,7 @@ def delete_order(_id: str) -> None:
 
     _render_order(order)
 
-    if order.status == 'new':
+    if order.status != 'unpublished':
         console.print(f"[yellow]Заказ {order.id} не может быть удален [/yellow]")
         return
 
