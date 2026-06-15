@@ -41,5 +41,6 @@ CREATE TABLE sales.order_items (
 	price DECIMAL(10,2) NOT NULL,
 	quantity INT NOT NULL,
 	product_id INT REFERENCES catalog.products (id)  NOT NULL,
-	order_id INT REFERENCES sales.orders (id)  NOT NULL
+	order_id INT REFERENCES sales.orders (id)  NOT NULL,
+    CONSTRAINT unique_items UNIQUE (product_id, order_id);
 );
