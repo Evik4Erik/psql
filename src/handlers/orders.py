@@ -216,12 +216,14 @@ def publish_order(_id: str) -> None:
     if order is None:
         render_error(f"Заказ с ID {_id} не найден")
         return
+        
+    answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
 
-    conn.execute(
-        """UPDATE sales.orders SET  status = %s WHERE id = %s""", ('new', _id),
-    )
-
-    console.print(f"[green]Заказ {order.id} опубликован [/green]")
+    if YesNoValidator.is_yes(answer):
+        conn.execute(
+            """UPDATE sales.orders SET  status = %s WHERE id = %s""", ('new', _id),
+        )
+        console.print(f"[green]Заказ {order.id} опубликован [/green]")
 
 @command("add order_item", "добавить позицию в заказ", CATEGORY_ORDERS)
 def add_order_item(order_id: str) -> None:  
