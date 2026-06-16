@@ -138,7 +138,14 @@ def add_warehouse() -> None:
     city = prompt("Город: ", validator=city_validator, completer=city_completer).strip()
     address = prompt("Адрес: ", validator=NonEmptyValidator()).strip()
     label = prompt("Метка (необязательно): ").strip() or None
-    is_central = "false" if _central_warehouse_exists() else "true"
+        answer = prompt("Wanna set is central? (y/n, д/н): ", validator=YesNoValidator())
+    is_central = YesNoValidator.is_yes(answer)
+    
+    if is_central:
+        conn.execute(
+            """UPDATE catalog.warehouses SET is_central = false WHERE is_central = true""",
+        )
+        
     conn.execute(
         "INSERT INTO catalog.warehouses (city, address, label, is_central) VALUES (%s, %s, %s, %s)",
         (city, address, label, is_central),
@@ -173,16 +180,14 @@ def edit_warehouse(_id: str) -> None:
             prompt("Метка (необязательно): ", default=warehouse.label or "").strip() or None
     )
 
-    answer = prompt("Wanna set is central? (y/n, д/н): ", validator=YesNoValidator())
-    set_is_central = YesNoValidator.is_yes(answer)
-
     if not warehouse.is_central:
-        set_is_central = prompt("Is central: ", default=str(warehouse.is_central)).strip()
+        answer = prompt("Wanna set is central? (y/n, д/н): ", validator=YesNoValidator())
+        set_is_central = YesNoValidator.is_yes(answer)
 
-    if not warehouse.is_central and set_is_central:
-        conn.execute(
-            """UPDATE catalog.warehouses SET is_central = false WHERE is_central = true""",
-        )
+        if  set_is_central:
+            conn.execute(
+                """UPDATE catalog.warehouses SET is_central = false WHERE is_central = true""",
+            )
 
     conn.execute(
         """UPDATE catalog.warehouses SET city = %s, address = %s, label = %s, is_central = %s
