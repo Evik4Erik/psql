@@ -1,17 +1,15 @@
-
 CREATE ROLE catalog_manager WITH LOGIN PASSWORD 'cat_1234';
 CREATE ROLE sales_manager WITH LOGIN PASSWORD 'sal_1234';
+
 GRANT ALL ON SCHEMA catalog TO catalog_manager;
 GRANT ALL ON SCHEMA sales TO sales_manager;
 
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA catalog to PUBLIC;
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA catalog TO sales_manager;
 
-ALTER DEFAULT PRIVILEGES FOR ROLE catalog_manager IN SCHEMA catalog GRANT SELECT ON TABLES TO PUBLIC; 
+ALTER DEFAULT PRIVILEGES FOR ROLE catalog_manager IN SCHEMA catalog GRANT SELECT ON TABLES TO PUBLIC;
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
-CREATE SCHEMA auth; 
+CREATE SCHEMA auth;
 CREATE TABLE auth.users(
 	id SERIAL PRIMARY KEY,
 	username TEXT UNIQUE NOT NULL,
@@ -26,5 +24,3 @@ insert into auth.users (username, password, role) VALUES ('cat_man', crypt('pass
 
 ALTER TABLE sales.orders ADD COLUMN created_by INT NOT NULL DEFAULT '1';
 ALTER TABLE sales.orders ADD CONSTRAINT created_by_user FOREIGN KEY (created_by) REFERENCES auth.users (id);
-
-
