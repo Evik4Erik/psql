@@ -1,6 +1,3 @@
-CREATE ROLE catalog_manager WITH LOGIN PASSWORD 'cat_1234';
-CREATE ROLE sales_manager WITH LOGIN PASSWORD 'sal_1234';
-
 GRANT ALL ON SCHEMA catalog TO catalog_manager;
 GRANT ALL ON SCHEMA sales TO sales_manager;
 
