@@ -10,6 +10,7 @@ from console import console, render_error
 from db import get_conn
 from validators import ChoiceValidator, NonEmptyValidator, YesNoValidator
 from commands import command, CATEGORY_WAREHOUSES
+from auth import ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER
 
 cities = [
     "Москва",
@@ -92,7 +93,7 @@ def get_list_warehouses()-> list[tuple[str,str]]:
         return list_tupl
 
 
-@command("list warehouses", "список всех складов", CATEGORY_WAREHOUSES)
+@command("list warehouses", "список всех складов", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER])
 def list_warehouses() -> None:
     conn = get_conn()
     table = Table(title="Склады", show_header=True, header_style="bold cyan")
@@ -118,7 +119,7 @@ def list_warehouses() -> None:
     console.print(table)
 
 
-@command("show warehouse", "информация о складе", CATEGORY_WAREHOUSES)
+@command("show warehouse", "информация о складе", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER])
 def show_warehouse(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Warehouse)) as cur:
@@ -132,7 +133,7 @@ def show_warehouse(_id: str) -> None:
     _render_warehouse(warehouse)
 
 
-@command("add warehouse", "добавить склад (интерактивно)", CATEGORY_WAREHOUSES)
+@command("add warehouse", "добавить склад (интерактивно)", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER])
 def add_warehouse() -> None:
     conn = get_conn()
     city = prompt("Город: ", validator=city_validator, completer=city_completer).strip()
@@ -165,7 +166,7 @@ def add_warehouse() -> None:
         console.print(f"[green]Склад в городе {city} добавлен [/green]")
 
 
-@command("edit warehouse", "редактировать склад", CATEGORY_WAREHOUSES)
+@command("edit warehouse", "редактировать склад", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER])
 def edit_warehouse(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Warehouse)) as cur:
@@ -210,7 +211,7 @@ def edit_warehouse(_id: str) -> None:
         console.print(f"[green]Склад в городе {city} обновлен [/green]")
 
 
-@command("delete warehouse", "удалить склад", CATEGORY_WAREHOUSES)
+@command("delete warehouse", "удалить склад", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER])
 def delete_warehouse(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Warehouse)) as cur:

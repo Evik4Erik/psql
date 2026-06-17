@@ -18,14 +18,4 @@ GRANT catalog_manager TO supervisor;
 GRANT sales_manager TO supervisor;
 
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-CREATE SCHEMA auth; 
-CREATE TABLE auth.users(
-	username TEXT PRIMARY KEY UNIQUE,
-	password TEXT,
-	role TEXT
-);
-
-GRANT USAGE ON SCHEMA auth TO PUBLIC;
-GRANT SELECT ON TABLE auth.users to PUBLIC;

@@ -21,6 +21,15 @@ def main() -> None:
     connect()
     logging.info("App Started")
 
+    # Parse CLI args
+    parser = argparse.ArgumentParser(description="Inventory Management System")
+    parser.add_argument("-u", "--username", help="Username for authentication")
+    parser.add_argument("-p", "--password", help="Password for authentication")
+    cli_args = parser.parse_args()
+
+    # ...
+    login(username=cli_args.username, password=cli_args.password)
+    
     # Вывод заголовка через rich
     console.print("\n[bold cyan]═══════════════════════════════════════[/bold cyan]")
     console.print("[bold cyan]   Inventory Management System[/bold cyan]")
@@ -31,16 +40,6 @@ def main() -> None:
     # https://python-prompt-toolkit.readthedocs.io/en/stable/pages/asking_for_input.html#the-promptsession-object
     completer = get_completer()
     session: PromptSession[str] = PromptSession(completer=completer)
-
-
-    # Parse CLI args
-    parser = argparse.ArgumentParser(description="Inventory Management System")
-    parser.add_argument("-u", "--username", help="Username for authentication")
-    parser.add_argument("-p", "--password", help="Password for authentication")
-    cli_args = parser.parse_args()
-
-    # ...
-    login(username=cli_args.username, password=cli_args.password)
 
     # Основной цикл
     while True:

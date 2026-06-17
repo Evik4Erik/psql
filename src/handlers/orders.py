@@ -18,6 +18,9 @@ from validators import PriceValidator, NonEmptyValidator, YesNoValidator, Choice
 from .warehouses import get_list_warehouses
 from .products import get_list_products
 
+from auth import _USER, ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER
+
+
 states = [
     'unpublished',
     'new',
@@ -47,6 +50,7 @@ class Order:
     total_amount: Decimal
     created_at: datetime
     warehouse_id: int
+    created_by: str
 
 
 @dataclass
@@ -68,6 +72,7 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
     table.add_row("Total amount", str(order.total_amount))
     table.add_row("Created at", str(order.created_at))
     table.add_row("Warehouse", str(order.warehouse_id))
+    table.add_row("Created_by", str(order.created_by))
 
     panel = Panel(
         table,
@@ -100,7 +105,7 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
     console.print(table)
 
 
-@command("list orders", "список всех orders", CATEGORY_ORDERS)
+@command("list orders", "список всех orders", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def list_products() -> None:
     conn = get_conn()
     table = Table(title="Orders", show_header=True, header_style="bold cyan")
@@ -110,6 +115,7 @@ def list_products() -> None:
     table.add_column("Total amount", style="yellow", min_width=30)
     table.add_column("Created at", style="magenta", min_width=15)
     table.add_column("Warehouse", style="blue", min_width=20)
+    table.add_column("Created by", style="red", min_width=20)
 
     with conn.cursor(row_factory=class_row(Order)) as cur:
         cur.execute("SELECT * FROM sales.orders")
@@ -122,6 +128,7 @@ def list_products() -> None:
             str(order.total_amount),
             str(order.created_at),
             str(order.warehouse_id),
+            order.created_by,
         )
     console.print(table)
 
@@ -145,7 +152,7 @@ def _render_order_item(item: Order_item):
 
     console.print(panel)
 
-@command("show order", "информация о заказе", CATEGORY_ORDERS)
+@command("show order", "информация о заказе", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def show_order(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Order)) as cur:
@@ -159,7 +166,7 @@ def show_order(_id: str) -> None:
     _render_order(order)
 
 
-@command("add order", "добавить заказ (интерактивно)", CATEGORY_ORDERS)
+@command("add order", "добавить заказ (интерактивно)", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def add_order() -> None:
     conn = get_conn()
     status = prompt("Статус: ", validator=states_validator, completer=states_completer, default='unpublished').strip()
@@ -172,15 +179,17 @@ def add_order() -> None:
         options=get_list_warehouses(),
         default="",
     )
+    created_by: str = _USER.username
+    
     conn.execute(
-        "INSERT INTO sales.orders (status, total_amount, created_at, warehouse_id) VALUES (%s, %s, %s, %s)",
-        (status, total_amount, created_at, warehouse_id),
+        "INSERT INTO sales.orders (status, total_amount, created_at, warehouse_id) VALUES (%s, %s, %s, %s, %s)",
+        (status, total_amount, created_at, warehouse_id, created_by),
     )
 
     console.print(f"[green]Заказ добавлен [/green]")
 
 
-@command("edit order", "редактировать заказ", CATEGORY_ORDERS)
+@command("edit order", "редактировать заказ", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def edit_order(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Order)) as cur:
@@ -211,7 +220,7 @@ def edit_order(_id: str) -> None:
     console.print(f"[green]Заказ {order.id} обновлен [/green]")
 
 
-@command("delete order", "удалить заказ", CATEGORY_ORDERS)
+@command("delete order", "удалить заказ", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def delete_order(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Order)) as cur:
@@ -236,7 +245,7 @@ def delete_order(_id: str) -> None:
         console.print(f"[green]Заказ {order.id} удален [/green]")
 
 
-@command("publish order", "опубликовать заказ", CATEGORY_ORDERS)
+@command("publish order", "опубликовать заказ", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def publish_order(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Order)) as cur:
@@ -256,7 +265,7 @@ def publish_order(_id: str) -> None:
         console.print(f"[green]Заказ {order.id} опубликован [/green]")
 
 
-@command("add order_item", "добавить позицию в заказ", CATEGORY_ORDERS)
+@command("add order_item", "добавить позицию в заказ", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def add_order_item(order_id: str) -> None:
     conn = get_conn()
     with conn.cursor() as cur:
@@ -332,7 +341,7 @@ def recalc_order(order_id: str) -> None:
             """UPDATE sales.orders SET total_amount = %s WHERE id = %s""", (total_amount, order_id),
         )
 
-@command("edit order_item", "изменить позицию в заказе", CATEGORY_ORDERS)
+@command("edit order_item", "изменить позицию в заказе", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def edit_order_item(order_id: str, product_id: str) -> None:  
     conn = get_conn()
     with conn.cursor() as cur:
@@ -379,7 +388,7 @@ def edit_order_item(order_id: str, product_id: str) -> None:
 
     recalc_order(order_id)
 
-@command("delete order_item", "добавить позицию в заказ", CATEGORY_ORDERS)
+@command("delete order_item", "добавить позицию в заказ", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def delete_order_item(order_id: str, product_id: str) -> None:  
     conn = get_conn()
     with conn.cursor() as cur:
