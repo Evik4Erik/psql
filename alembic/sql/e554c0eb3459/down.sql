@@ -36,5 +36,3 @@ DROP TABLE catalog.products;
 DROP TABLE catalog.warehouses;
 
 DROP SCHEMA catalog AUTHORIZATION app_user;
-
-DROP DATABASE inventorydb;

@@ -1,5 +1,3 @@
-CREATE DATABASE inventorydb;
-
 CREATE SCHEMA IF NOT EXISTS catalog AUTHORIZATION app_user;
 
 CREATE TABLE catalog.product_categories (
