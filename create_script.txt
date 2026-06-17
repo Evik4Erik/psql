@@ -44,3 +44,14 @@ CREATE TABLE sales.order_items (
 	PRIMARY KEY (order_id, item_id)
     	CONSTRAINT unique_items UNIQUE (product_id, order_id);
 );
+
+CREATE ROLE catalog_manager WITH LOGIN PASSWORD 'cat_1234';
+CREATE ROLE sales_manager WITH LOGIN PASSWORD 'sal_1234';
+GRANT ALL ON SCHEMA catalog TO catalog_manager;
+GRANT ALL ON SCHEMA sales TO sales_manager;
+
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA catalog to PUBLIC;
+GRANT SELECT ON ALL SEQUENCES IN SCHEMA catalog TO sales_manager;
+
+
+

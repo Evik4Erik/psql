@@ -1,4 +1,5 @@
 import logging
+import argparse
 
 from prompt_toolkit import PromptSession
 
@@ -9,6 +10,7 @@ from setup import setup_logger
 # pylint: disable-next=unused-import
 import handlers
 from commands import get_completer, find_command, get_args
+from auth import login
 
 # Если нужно получить больше деталей о psycopg, следует изменить log level на DEBUG
 setup_logger(psycopg_log_level=logging.INFO)
@@ -29,6 +31,16 @@ def main() -> None:
     # https://python-prompt-toolkit.readthedocs.io/en/stable/pages/asking_for_input.html#the-promptsession-object
     completer = get_completer()
     session: PromptSession[str] = PromptSession(completer=completer)
+
+
+    # Parse CLI args
+    parser = argparse.ArgumentParser(description="Inventory Management System")
+    parser.add_argument("-u", "--username", help="Username for authentication")
+    parser.add_argument("-p", "--password", help="Password for authentication")
+    cli_args = parser.parse_args()
+
+    # ...
+    login(username=cli_args.username, password=cli_args.password)
 
     # Основной цикл
     while True:

@@ -231,7 +231,8 @@ def delete_order(_id: str) -> None:
     answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
 
     if YesNoValidator.is_yes(answer):
-        conn.execute("DELETE FROM sales.orders WHERE id = %s CASCADE", (_id,))
+        conn.execute("DELETE FROM sales.order_items WHERE order_id = %s", (_id,))
+        conn.execute("DELETE FROM sales.orders WHERE id = %s", (_id,))
         console.print(f"[green]Заказ {order.id} удален [/green]")
 
 
