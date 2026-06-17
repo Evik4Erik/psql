@@ -65,16 +65,32 @@ def _render_warehouse(warehouse: Warehouse) -> None:
 
     console.print(panel)
 
+
 def _central_warehouse_exists() -> bool:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Warehouse)) as cur:
         cur.execute("SELECT * FROM catalog.warehouses WHERE is_central = true")
         warehouses: list[Warehouse] = cur.fetchall()
-        
+
     if len(warehouses) >= 1:
         return True
-    
+
     return False
+    
+
+def get_list_warehouses()-> list[tuple[str,str]]:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Warehouse)) as cur:
+        cur.execute("SELECT id, city, address, label, is_central FROM catalog.warehouses")
+        warehouses: list[Warehouse] = cur.fetchall()
+
+        list_tupl= [
+            (str(war.id), str(war.city) + " "+ str(war.address))
+            for war in warehouses
+        ]
+
+        return list_tupl
+
 
 @command("list warehouses", "список всех складов", CATEGORY_WAREHOUSES)
 def list_warehouses() -> None:
@@ -122,7 +138,23 @@ def add_warehouse() -> None:
     city = prompt("Город: ", validator=city_validator, completer=city_completer).strip()
     address = prompt("Адрес: ", validator=NonEmptyValidator()).strip()
     label = prompt("Метка (необязательно): ").strip() or None
-    is_central = "false" if _central_warehouse_exists() else "true"
+    
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM catalog.warehouses")
+        row = cur.fetchone()
+        count = row[0]
+
+    if count > 0:
+        answer = prompt("Wanna set is central? (y/n, д/н): ", validator=YesNoValidator())
+        is_central = YesNoValidator.is_yes(answer)
+    else:
+        is_central = True
+    
+    if is_central:
+        conn.execute(
+            """UPDATE catalog.warehouses SET is_central = false WHERE is_central = true""",
+        )
+        
     conn.execute(
         "INSERT INTO catalog.warehouses (city, address, label, is_central) VALUES (%s, %s, %s, %s)",
         (city, address, label, is_central),
@@ -154,13 +186,24 @@ def edit_warehouse(_id: str) -> None:
         "Адрес: ", default=warehouse.address, validator=NonEmptyValidator()
     ).strip()
     label = (
-        prompt("Метка (необязательно): ", default=warehouse.label or "").strip() or None
+            prompt("Метка (необязательно): ", default=warehouse.label or "").strip() or None
     )
+
+    if not warehouse.is_central:
+        answer = prompt("Wanna set is central? (y/n, д/н): ", validator=YesNoValidator())
+        set_is_central = YesNoValidator.is_yes(answer)
+
+        if  set_is_central:
+            conn.execute(
+                """UPDATE catalog.warehouses SET is_central = false WHERE is_central = true""",
+            )
+
     conn.execute(
-        """UPDATE catalog.warehouses SET city = %s, address = %s, label = %s
+        """UPDATE catalog.warehouses SET city = %s, address = %s, label = %s, is_central = %s
         WHERE id = %s""",
-        (city, address, label, _id),
+        (city, address, label, set_is_central, _id),
     )
+
     if label:
         console.print(f"[green]Склад в городе {city} ({label}) обновлен [/green]")
     else:

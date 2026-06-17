@@ -5,6 +5,7 @@ from rich.panel import Panel
 from rich.table import Table
 from psycopg.rows import class_row
 from prompt_toolkit import prompt
+from sqlalchemy.dialects.oracle import dictionary
 
 from console import console, render_error
 from db import get_conn
@@ -12,6 +13,8 @@ from validators import PriceValidator, NonEmptyValidator, YesNoValidator
 
 from commands import command, CATEGORY_PRODUCTS
 from .product_category import _get_list_category
+from prompt_toolkit.shortcuts import choice
+
 
 @dataclass
 class Product:
@@ -79,6 +82,20 @@ def list_products() -> None:
     console.print(table)
 
 
+def get_list_products() -> dictionary:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Product)) as cur:
+        cur.execute("SELECT id, sku, name, price, category_id FROM catalog.products")
+        products: list[Product] = cur.fetchall()
+
+        diction = {}
+
+        for prod in products:
+            diction[str(prod.id)] = (str(prod.sku) + " " + str(prod.name))
+
+        return diction
+
+
 @command("show product", "информация о товаре", CATEGORY_PRODUCTS)
 def show_product(_id: str) -> None:
     """
@@ -106,17 +123,17 @@ def add_product() -> None:
     Используйте prompt с валидаторами для ввода данных.
     """
 
-    category_list = _get_list_category()    
-    category_validator = ChoiceValidator(
-        category_list, message="Склад должен быть из списка. Используйте Tab для автодополнения."
-    )
-
     conn = get_conn()
     # TO DO - limit 30 liters
     sku = prompt("Артикул: ", validator=NonEmptyValidator()).strip()
     name = prompt("Наименование: ", validator=NonEmptyValidator()).strip()
     price = prompt("Цена: ", validator=PriceValidator())
-    category_id = prompt("Категория: ", validator=category_validator).strip()) 
+    category_id = choice(
+        message="Категория: ",
+        options=_get_list_category(),
+        default="",
+    )
+
     conn.execute(
         "INSERT INTO catalog.products (sku, name, price, category_id) VALUES (%s, %s, %s, %s)",
         (sku, name, price, category_id),
@@ -141,18 +158,15 @@ def edit_product(_id: str) -> None:
         render_error(f"Товар с ID {_id} не найден")
         return
 
-    category_list = _get_list_category()    
-
-    category_validator = ChoiceValidator(
-        category_list, message="Склад должен быть из списка. Используйте Tab для автодополнения."
-    )
-
     sku = prompt("Артикул: ", default=product.sku, validator=NonEmptyValidator()).strip()
     name = prompt("Наименование: ", default=product.name, validator=NonEmptyValidator()).strip()
-    price = prompt("Цена: ", default=product.price, validator=PriceValidator())
-    category_id = (
-        prompt("Категория: ", default=product.category, validator=category_validator).strip() or None
+    price = prompt("Цена: ", default=product.price, validator=PriceValidator()).strip()
+    category_id = choice(
+        message="Категория: ",
+        options=_get_list_category(),
+        default="",
     )
+
     conn.execute(
         """UPDATE catalog.products SET sku = %s, name = %s, price = %s, category_id = %s
         WHERE id = %s""",

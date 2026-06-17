@@ -1,3 +1,6 @@
+CREATE DATABASE IF NOT EXISTS inventorydb;
+
+CREATE SCHEMA IF NOT EXISTS catalog AUTHORIZATION app_user;
 
 CREATE TABLE catalog.product_categories (
 	id serial PRIMARY KEY, 
@@ -10,7 +13,7 @@ CREATE TABLE catalog.products (
 	sku VARCHAR(30) UNIQUE NOT NULL,
 	name TEXT NOT NULL,
 	price DECIMAL NOT NULL,
-	category_id INT REFERENCES product_categories (id) NOT NULL	
+	category_id INT REFERENCES catalog.product_categories (id) NOT NULL	
 );
 
 CREATE TABLE catalog.warehouses (
@@ -19,4 +22,25 @@ CREATE TABLE catalog.warehouses (
 	address TEXT NOT NULL,
 	label TEXT,
 	is_central BOOLEAN
+);
+
+CREATE SCHEMA IF NOT EXISTS sales AUTHORIZATION app_user;
+
+CREATE TABLE sales.orders (
+	id serial PRIMARY KEY,
+	status TEXT NOT NULL DEFAULT 'unpublished',
+	total_amount DECIMAL(10,2) NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL,
+	warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL
+);
+
+ALTER TABLE sales.orders ADD CONSTRAINT status_constraint CHECK (status in ( 'unpublished', 'new', 'processing', 'pending', 'packing', 'shipped'));
+
+CREATE TABLE sales.order_items (
+	price DECIMAL(10,2) NOT NULL,
+	quantity INT NOT NULL,
+	product_id INT REFERENCES catalog.products (id)  NOT NULL,
+	order_id INT REFERENCES sales.orders (id)  NOT NULL,
+	PRIMARY KEY (order_id, item_id)
+    	CONSTRAINT unique_items UNIQUE (product_id, order_id);
 );

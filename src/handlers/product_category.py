@@ -37,14 +37,17 @@ def _render_category(category: Product_Category) -> None:
 
     console.print(panel)
 
-def _get_list_category() -> list[str]:
+def _get_list_category() -> list[tuple[str,str]]:
     conn = get_conn()
     with conn.cursor() as cur:
-        cur.execute("SELECT id FROM catalog.product_categories")
-        categories: list[str] = [str(row[0]) for row in cur.fetchall()]
-        return categories
-    
-    return []
+        cur.execute("SELECT id, name FROM catalog.product_categories")
+        categories: list[Product_Category] = cur.fetchall()
+        list_tupl= [
+            (str(cat[0]), str(cat[1]))
+            for cat in categories
+        ]
+
+        return list_tupl
 
 @command("list product_category", "список всех категорий", CATEGORY_PRODUCT_CATEGORY)
 def list_category() -> None:
