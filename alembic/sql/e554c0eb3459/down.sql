@@ -1,5 +1,4 @@
 ALTER DEFAULT PRIVILEGES FOR ROLE catalog_manager IN SCHEMA catalog GRANT SELECT ON TABLES TO PUBLIC;
-ALTER DEFAULT PRIVILEGES FOR ROLE app_user IN SCHEMA catalog REVOKE USAGE ON SCHEMA TO PUBLIC;
 
 REVOKE SELECT ON ALL SEQUENCES IN SCHEMA catalog to PUBLIC;
 REVOKE SELECT ON ALL SEQUENCES IN SCHEMA catalog TO sales_manager;
@@ -30,12 +29,12 @@ ALTER TABLE sales.orders DROP CONSTRAINT status_constraint;
 DROP TABLE sales.order_items;
 DROP TABLE sales.orders;
 
-DROP SCHEMA IF EXISTS sales;
+DROP SCHEMA sales;
 
 DROP TABLE catalog.product_categories;
 DROP TABLE catalog.products;
 DROP TABLE catalog.warehouses;
 
-DROP SCHEMA IF NOT EXISTS catalog AUTHORIZATION app_user;
+DROP SCHEMA catalog AUTHORIZATION app_user;
 
-DROP DATABASE IF NOT EXISTS inventorydb;
+DROP DATABASE inventorydb;

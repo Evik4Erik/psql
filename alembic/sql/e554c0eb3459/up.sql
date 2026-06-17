@@ -1,4 +1,4 @@
-CREATE DATABASE IF NOT EXISTS inventorydb;
+CREATE DATABASE inventorydb;
 
 CREATE SCHEMA IF NOT EXISTS catalog AUTHORIZATION app_user;
 
@@ -41,8 +41,8 @@ CREATE TABLE sales.order_items (
 	quantity INT NOT NULL,
 	product_id INT REFERENCES catalog.products (id)  NOT NULL,
 	order_id INT REFERENCES sales.orders (id)  NOT NULL,
-	PRIMARY KEY (order_id, product_id)
-    CONSTRAINT unique_items UNIQUE (order_id, product_id);
+	PRIMARY KEY (order_id, product_id),
+    CONSTRAINT unique_items UNIQUE (order_id, product_id)
 );
 
 GRANT ALL ON SCHEMA catalog TO catalog_manager;
@@ -63,5 +63,4 @@ GRANT SELECT ON ALL TABLES IN SCHEMA catalog to sales_manager;
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA catalog to PUBLIC;
 GRANT SELECT ON ALL SEQUENCES IN SCHEMA catalog TO sales_manager;
 
-ALTER DEFAULT PRIVILEGES FOR ROLE app_user IN SCHEMA catalog GRANT USAGE ON SCHEMA TO PUBLIC;
 ALTER DEFAULT PRIVILEGES FOR ROLE app_user IN SCHEMA catalog GRANT SELECT ON TABLES TO PUBLIC;
