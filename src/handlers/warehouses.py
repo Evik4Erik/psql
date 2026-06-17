@@ -138,8 +138,17 @@ def add_warehouse() -> None:
     city = prompt("Город: ", validator=city_validator, completer=city_completer).strip()
     address = prompt("Адрес: ", validator=NonEmptyValidator()).strip()
     label = prompt("Метка (необязательно): ").strip() or None
+    
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM catalog.warehouses")
+        row = cur.fetchone()
+        count = row[0]
+
+    if count > 0:
         answer = prompt("Wanna set is central? (y/n, д/н): ", validator=YesNoValidator())
-    is_central = YesNoValidator.is_yes(answer)
+        is_central = YesNoValidator.is_yes(answer)
+    else:
+        is_central = True
     
     if is_central:
         conn.execute(
