@@ -41,8 +41,8 @@ CREATE TABLE sales.order_items (
 	quantity INT NOT NULL,
 	product_id INT REFERENCES catalog.products (id)  NOT NULL,
 	order_id INT REFERENCES sales.orders (id)  NOT NULL,
-	PRIMARY KEY (order_id, item_id)
-    	CONSTRAINT unique_items UNIQUE (product_id, order_id);
+	PRIMARY KEY (order_id, product_id)
+    CONSTRAINT unique_items UNIQUE (order_id, product_id);
 );
 
 GRANT ALL ON SCHEMA catalog TO catalog_manager;
