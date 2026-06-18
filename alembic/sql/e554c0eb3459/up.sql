@@ -1,12 +1,12 @@
 CREATE SCHEMA IF NOT EXISTS catalog AUTHORIZATION app_user;
 
-CREATE TABLE catalog.product_categories (
+CREATE TABLE IF NOT EXISTS  catalog.product_categories (
 	id serial PRIMARY KEY,
 	name TEXT NOT NULL,
 	UNIQUE (name)
 );
 
-CREATE TABLE catalog.products (
+CREATE TABLE IF NOT EXISTS  catalog.products (
 	id serial PRIMARY KEY,
 	sku VARCHAR(30) UNIQUE NOT NULL,
 	name TEXT NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE catalog.products (
 	category_id INT REFERENCES catalog.product_categories (id) NOT NULL
 );
 
-CREATE TABLE catalog.warehouses (
+CREATE TABLE IF NOT EXISTS  catalog.warehouses (
 	id serial PRIMARY KEY,
 	city TEXT NOT NULL,
 	address TEXT NOT NULL,
@@ -24,7 +24,7 @@ CREATE TABLE catalog.warehouses (
 
 CREATE SCHEMA IF NOT EXISTS sales AUTHORIZATION app_user;
 
-CREATE TABLE sales.orders (
+CREATE TABLE IF NOT EXISTS  sales.orders (
 	id serial PRIMARY KEY,
 	status TEXT NOT NULL DEFAULT 'unpublished',
 	total_amount DECIMAL(10,2) NOT NULL,
@@ -32,9 +32,10 @@ CREATE TABLE sales.orders (
 	warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL
 );
 
-ALTER TABLE sales.orders ADD CONSTRAINT status_constraint CHECK (status in ( 'unpublished', 'new', 'processing', 'pending', 'packing', 'shipped'));
+ALTER TABLE sales.orders DROP CONSTRAINT IF EXISTS status_constraint;
+ALTER TABLE sales.orders ADD CONSTRAINT  status_constraint CHECK (status in ( 'unpublished', 'new', 'processing', 'pending', 'packing', 'shipped'));
 
-CREATE TABLE sales.order_items (
+CREATE TABLE IF NOT EXISTS  sales.order_items (
 	price DECIMAL(10,2) NOT NULL,
 	quantity INT NOT NULL,
 	product_id INT REFERENCES catalog.products (id)  NOT NULL,
