@@ -4,9 +4,9 @@ from decimal import Decimal
 from rich.panel import Panel
 from rich.table import Table
 from psycopg.rows import class_row
-
+from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit import prompt
-from validators import PriceValidator, NonEmptyValidator, YesNoValidator, PositiveIntValidator
+from validators import PriceValidator, NonEmptyValidator, YesNoValidator, PositiveIntValidator, ChoiceValidator
 
 from console import console, render_error
 from db import get_conn
@@ -15,7 +15,15 @@ from commands import command, CATEGORY_ROUTES
 from auth import _USER, ROLE_WORKER, ROLE_INVENTORY_MANAGER
 
 from prompt_toolkit.shortcuts import choice
-from .warehouses import get_list_warehouses
+from .warehouses import get_list_warehouses, get_list_cities
+
+from sqlalchemy.dialects.oracle import dictionary
+
+cities = []
+city_completer = WordCompleter(cities, ignore_case=True, sentence=True)
+city_validator = ChoiceValidator(
+    cities, message="Город должен быть из списка. Используйте Tab для автодополнения."
+)
 
 
 @dataclass
@@ -90,16 +98,19 @@ def show_order(_id: str) -> None:
 def add_order() -> None:
     conn = get_conn()
 
-    from_= choice(
-        message="Склад: ",
-        options=get_list_warehouses(),
-        default="",
-    ), 
-    to_= choice(
-        message="Склад: ",
-        options=get_list_warehouses(),
-        default="",
-    ), 
+    global cities
+    cities.clear()
+
+    cities_tmp: dictionary = get_list_cities()
+
+    for key, value in cities_tmp.items():
+        cities.append(value)
+
+    from_= prompt("Город отправления: ", validator=city_validator, completer=city_completer).strip()
+    from_ = list(cities_tmp.keys())[list(cities_tmp.values()).index(from_)] 
+    to_= prompt("Город прибытия: ", validator=city_validator, completer=city_completer).strip()
+    to_ = list(cities_tmp.keys())[list(cities_tmp.values()).index(to_)]
+
     duration = prompt("Delivery time: ", validator=PositiveIntValidator()), 
     total_threshold = prompt("Min order summ: ", validator=PriceValidator())
     
@@ -108,7 +119,7 @@ def add_order() -> None:
         (from_, to_, duration, total_threshold),
     )
 
-    console.print(f"[green]Заказ добавлен [/green]")
+    console.print(f"[green]Route добавлен [/green]")
 
 @command("edit route", "редактировать route", CATEGORY_ROUTES, [ROLE_INVENTORY_MANAGER, ROLE_WORKER])
 def edit_route(_id: str) -> None:
@@ -140,7 +151,7 @@ def edit_route(_id: str) -> None:
         (from_, to_, duration, total_threshold, _id),
     )
 
-    console.print(f"[green]Заказ {route.id} обновлен [/green]")
+    console.print(f"[green]Route {route.id} обновлен [/green]")
 
 
 @command("delete route", "удалить route", CATEGORY_ROUTES, [ROLE_INVENTORY_MANAGER, ROLE_WORKER])
