@@ -15,7 +15,7 @@ def find_user_by_login_and_pass(username: str, password: str) -> User | None:
     """
     conn = get_conn()
     with conn.cursor(row_factory=class_row(User)) as cur:
-        cur.execute("SELECT id, username, role FROM auth.users WHERE username = %s AND password = crypt('pass', %s)", (username, password))
+        cur.execute("SELECT id, username, role FROM auth.users WHERE username = %s AND password = crypt(%s, password)", (username, password))
         user: User | None = cur.fetchone()
         return user
 

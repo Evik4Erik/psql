@@ -1,3 +1,5 @@
+SET ROLE app_user;
+
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE TABLE IF NOT EXISTS  auth.users(
 	id SERIAL PRIMARY KEY,
@@ -15,3 +17,5 @@ ALTER TABLE sales.orders ADD COLUMN IF NOT EXISTS created_by INT NOT NULL DEFAUL
 
 ALTER TABLE sales.orders DROP CONSTRAINT IF EXISTS created_by_user;
 ALTER TABLE sales.orders ADD CONSTRAINT created_by_user FOREIGN KEY (created_by) REFERENCES auth.users (id);
+
+RESET ROLE;
