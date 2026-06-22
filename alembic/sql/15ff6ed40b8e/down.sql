@@ -1,0 +1,8 @@
+ALTER TABLE sales.orders DROP CONSTRAINT created_by_user;
+ALTER TABLE sales.orders DROP COLUMN created_by;
+
+REVOKE SELECT ON TABLE auth.users FROM PUBLIC;
+REVOKE USAGE ON SCHEMA auth FROM PUBLIC;
+
+DROP TABLE auth.users;
+DROP SCHEMA auth;

@@ -13,6 +13,8 @@ from db import get_conn
 from validators import NonEmptyValidator, YesNoValidator
 from commands import command, CATEGORY_PRODUCT_CATEGORY
 
+from auth import ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER
+
 
 @dataclass
 class Product_Category:
@@ -49,7 +51,7 @@ def _get_list_category() -> list[tuple[str,str]]:
 
         return list_tupl
 
-@command("list product_category", "список всех категорий", CATEGORY_PRODUCT_CATEGORY)
+@command("list product_category", "список всех категорий", CATEGORY_PRODUCT_CATEGORY, [ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER])
 def list_category() -> None:
     conn = get_conn()
     table = Table(title="Категории", show_header=True, header_style="bold cyan")
@@ -69,7 +71,7 @@ def list_category() -> None:
     console.print(table)
 
 
-@command("show product_category", "информация о категории", CATEGORY_PRODUCT_CATEGORY)
+@command("show product_category", "информация о категории", CATEGORY_PRODUCT_CATEGORY, [ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER])
 def show_category(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Product_Category)) as cur:
@@ -83,7 +85,7 @@ def show_category(_id: str) -> None:
     _render_category(category)
 
 
-@command("add product_category", "добавить категорию", CATEGORY_PRODUCT_CATEGORY)
+@command("add product_category", "добавить категорию", CATEGORY_PRODUCT_CATEGORY, [ROLE_CATALOG_MANAGER])
 def add_category() -> None:
     conn = get_conn()
     name = prompt("Наименование: ", validator=NonEmptyValidator()).strip()
@@ -95,7 +97,7 @@ def add_category() -> None:
     console.print(f"[green]Категория добавлена [/green]")
 
 
-@command("edit product_category", "редактировать склад", CATEGORY_PRODUCT_CATEGORY)
+@command("edit product_category", "редактировать склад", CATEGORY_PRODUCT_CATEGORY, [ROLE_CATALOG_MANAGER])
 def edit_category(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Product_Category)) as cur:
@@ -119,7 +121,7 @@ def edit_category(_id: str) -> None:
     console.print(f"[green]Категория обновлена [/green]")
 
 
-@command("delete product_category", "удалить категорию", CATEGORY_PRODUCT_CATEGORY)
+@command("delete product_category", "удалить категорию", CATEGORY_PRODUCT_CATEGORY, [ROLE_CATALOG_MANAGER])
 def delete_category(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Product_Category)) as cur:
