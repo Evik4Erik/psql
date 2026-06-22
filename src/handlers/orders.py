@@ -18,7 +18,7 @@ from validators import PriceValidator, NonEmptyValidator, YesNoValidator, Choice
 from .warehouses import get_list_warehouses
 from .products import get_list_products
 
-from auth import _USER, ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER
+from auth import _USER, ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER
 
 
 states = [
@@ -419,5 +419,27 @@ def delete_order_item(order_id: str, product_id: str) -> None:
 
     if YesNoValidator.is_yes(answer):
         conn.execute("DELETE FROM sales.order_items WHERE order_id = %s AND product_id = %s", (order_id, product_id))
+
+@command("edit order status", "изменить статус заказа", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
+def publish_order(_id: str) -> None:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Order)) as cur:
+        cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
+        order: Order | None = cur.fetchone()
+
+    if order is None:
+        render_error(f"Заказ с ID {_id} не найден")
+        return
+
+    status = prompt("Статус: ", validator=states_validator, completer=states_completer, default=order.status).strip()
+    
+
+    answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
+
+    if YesNoValidator.is_yes(answer):
+        conn.execute(
+            """UPDATE sales.orders SET  status = %s WHERE id = %s""", (status, _id),
+        )
+        console.print(f"[green]Заказ {order.id} опубликован [/green]")
 
         recalc_order(order_id)
