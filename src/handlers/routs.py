@@ -19,10 +19,10 @@ from .warehouses import get_list_warehouses, get_list_cities
 
 from sqlalchemy.dialects.oracle import dictionary
 
-ware = []
-ware_completer = WordCompleter(ware, ignore_case=True, sentence=True)
-ware_validator = ChoiceValidator(
-    ware, message="Город должен быть из списка. Используйте Tab для автодополнения."
+cities = []
+city_completer = WordCompleter(cities, ignore_case=True, sentence=True)
+city_validator = ChoiceValidator(
+    cities, message="Город должен быть из списка. Используйте Tab для автодополнения."
 )
 
 
@@ -88,7 +88,7 @@ def show_order(_id: str) -> None:
         route: Route | None = cur.fetchone()
 
     if route is None:
-        render_error(f"Заказ с ID {_id} не найден")
+        render_error(f"Route с ID {_id} не найден")
         return
 
     _render_route(route)
@@ -98,21 +98,20 @@ def show_order(_id: str) -> None:
 def add_order() -> None:
     conn = get_conn()
 
-    from_= choice(
-        message="Склад: ",
-        options=get_list_warehouses(),
-        default="",
-    )
-    #from_ = list(wares_tmp.keys())[list(wares_tmp.values()).index(from_)]
-    to_= choice(
-        message="Склад: ",
-        options=get_list_warehouses(),
-        default="",
-    )
-    #to_ = list(wares_tmp.keys())[list(wares_tmp.values()).index(to_)]
+    global cities
+    cities.clear()
 
-    duration: int = 0
-    duration = prompt("Delivery time: ", validator=PositiveIntValidator())
+    cities_tmp: dictionary = get_list_cities()
+
+    for key, value in cities_tmp.items():
+        cities.append(value)
+
+    from_= prompt("Город отправления: ", validator=city_validator, completer=city_completer).strip()
+    from_ = list(cities_tmp.keys())[list(cities_tmp.values()).index(from_)] 
+    to_= prompt("Город прибытия: ", validator=city_validator, completer=city_completer).strip()
+    to_ = list(cities_tmp.keys())[list(cities_tmp.values()).index(to_)]
+
+    duration = prompt("Delivery time: ", validator=PositiveIntValidator()), 
     total_threshold = prompt("Min order summ: ", validator=PriceValidator())
     
     conn.execute(
