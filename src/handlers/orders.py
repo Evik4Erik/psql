@@ -21,6 +21,8 @@ from .products import get_list_products
 from auth import _USER, ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER
 import auth
 
+import products
+
 
 states = [
     'unpublished',
@@ -34,13 +36,6 @@ states = [
 states_completer = WordCompleter(states, ignore_case=True, sentence=True)
 states_validator = ChoiceValidator(
     states, message="Статус должен быть из списка. Используйте Tab для автодополнения."
-)
-
-products = []
-
-products_completer = WordCompleter(products, ignore_case=True, sentence=True)
-products_validator = ChoiceValidator(
-    products, message="Product должен быть из списка. Используйте Tab для автодополнения."
 )
 
 
@@ -176,9 +171,7 @@ def add_order() -> None:
     conn = get_conn()
     status = prompt("Статус: ", validator=states_validator, completer=states_completer, default='unpublished').strip()
     total_amount: Decimal = 0
-    #total_amount = prompt("Стоимость: ", validator=PriceValidator()).strip()
     created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Output: 2026-06-11T12:40:00.123456+00:00
-    #prompt("Дата создания: ", validator=DateValidator()).strip() # TO DO date validator
     warehouse_id = choice(
         message="Склад: ",
         options=get_list_warehouses(),
@@ -287,28 +280,21 @@ def add_order_item(order_id: str) -> None:
         console.print(f"[yellow]Позиция в заказе {order_id} не может быть добавлена [/yellow]")
         return
         
-    global products
-    products.clear()
+    products.products_list.clear()
 
     products_tmp: dictionary = get_list_products()
 
     for key, value in products_tmp.items():
-        products.append(value)
+        products.products_list.append(value)
 
     enter_product = True
 
     while enter_product:
         product: str = prompt(
             "Product: ",
-            validator=products_validator,
-            completer=products_completer,
+            validator=products.products_validator,
+            completer=products.products_completer,
         ).strip()
-
-        '''product_id = choice(
-            message="Товар: ",
-            options=get_list_products(),
-            default="",
-        )'''
 
         product_id = next((k for k, v in products_tmp.items() if v == product))
 
