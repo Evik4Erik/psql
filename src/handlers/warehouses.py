@@ -10,7 +10,7 @@ from console import console, render_error
 from db import get_conn
 from validators import ChoiceValidator, NonEmptyValidator, YesNoValidator
 from commands import command, CATEGORY_WAREHOUSES
-from auth import ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER
+from auth import ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER
 
 from sqlalchemy.dialects.oracle import dictionary
 
@@ -81,7 +81,7 @@ def get_list_warehouses()-> list[tuple[str,str]]:
         return list_tupl
 
 
-@command("list warehouses", "список всех складов", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER])
+@command("list warehouses", "список всех складов", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
 def list_warehouses() -> None:
     conn = get_conn()
     table = Table(title="Склады", show_header=True, header_style="bold cyan")
@@ -149,8 +149,8 @@ def add_warehouse() -> None:
         cities.append(value)
 
 
-    city = prompt("Город: ", validator=city_validator, completer=city_completer).strip()
-    city = list(cities_tmp.keys())[list(cities_tmp.values()).index(city)]
+    city_name = prompt("Город: ", validator=city_validator, completer=city_completer).strip()
+    city = list(cities_tmp.keys())[list(cities_tmp.values()).index(city_name)]
 
     address = prompt("Адрес: ", validator=NonEmptyValidator()).strip()
     label = prompt("Метка (необязательно): ").strip() or None
@@ -176,9 +176,9 @@ def add_warehouse() -> None:
         (city, address, label, is_central),
     )
     if label:
-        console.print(f"[green]Склад в городе {city} ({label}) добавлен [/green]")
+        console.print(f"[green]Склад в городе {city_name} ({label}) добавлен [/green]")
     else:
-        console.print(f"[green]Склад в городе {city} добавлен [/green]")
+        console.print(f"[green]Склад в городе {city_name} добавлен [/green]")
 
 
 @command("edit warehouse", "редактировать склад", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER])
