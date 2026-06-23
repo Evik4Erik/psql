@@ -18,8 +18,10 @@ from validators import PriceValidator, NonEmptyValidator, YesNoValidator, Choice
 from .warehouses import get_list_warehouses
 from .products import get_list_products
 
-from auth import _USER, ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER
+from auth import ROLE_INVENTORY_MANAGER
 import auth
+
+import products
 
 
 @dataclass
@@ -44,18 +46,117 @@ def _render_stock(stock: Stock):  # pylint: disable=unused-argument
     panel = Panel(
         table,
         expand=False,
-        title=f"[bold green]Order #{order.id}[/bold green]",
+        title=f"[bold green]stock #{stock.id}[/bold green]",
         border_style="green",
     )
 
     console.print(panel)
 
-    table = Table(title="Order_items", show_header=True, header_style="bold cyan")
+@command("list stocks", "список всех stocks", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
+def list_stocks() -> None:
+    conn = get_conn()
+    table = Table(title="Stocks", show_header=True, header_style="bold cyan")
 
-    table.add_column("Order_id", style="blue", min_width=20)
-    table.add_column("Product_id", style="magenta", min_width=15)
-    table.add_column("Quantity", style="yellow", min_width=30)
-    table.add_column("Price", style="green", min_width=20)
+    table.add_column("ID", style="dim", width=6, justify="right")
+    table.add_column("warehouse_id", style="green", min_width=20)
+    table.add_column("product_id", style="yellow", min_width=30)
+    table.add_column("quantity", style="magenta", min_width=15)
+
+    with conn.cursor(row_factory=class_row(Stock)) as cur:
+        cur.execute("SELECT id, warehouse_id, product_id, quantity FROM inventory.stocks")
+        stocks: list[Stock] = cur.fetchall()
+
+    for stock in stocks:
+        table.add_row(
+            str(stock.id),
+            str(stock.warehouse_id),
+            str(stock.product_id),
+            str(stock.quantity)
+        )
+    console.print(table)
+
+@command("show stock", "информация о stock", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
+def show_stock(_id: str) -> None:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Stock)) as cur:
+        cur.execute("SELECT id, warehouse_id, product_id, quantity FROM inventory.stocks WHERE id = %s", (_id,))
+        stock: Stock | None = cur.fetchone()
+
+    if stock is None:
+        render_error(f"Stock с ID {_id} не найден")
+        return
+
+    _render_stock(stock)
+
 
 @command("add stock", "добавить сток", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
-def add_stock(_id: str) -> None:
+def add_stock() -> None:
+    conn = get_conn()
+
+    products.products_list.clear()
+    products_tmp: dictionary = get_list_products()
+
+    for key, value in products_tmp.items():
+        products.products_list.append(value)
+
+    enter_product = True
+
+    while enter_product:
+        warehouse_id = choice(
+            message="Склад: ",
+            options=get_list_warehouses(),
+            default="",
+        )
+            
+        product: str = prompt(
+            "Product: ",
+            validator=products.products_validator,
+            completer=products.products_completer,
+        ).strip()
+
+        product_id = next((k for k, v in products_tmp.items() if v == product))
+
+        quantity = prompt("Количество: ", validator=PositiveIntValidator()).strip() 
+    
+        conn.execute(
+            "INSERT INTO inventory.stocks (warehouse_id, product_id, quantity) VALUES (%s, %s, %s)",
+            (warehouse_id, product_id, quantity),
+        )
+
+    console.print(f"[green]Заказ добавлен [/green]")
+
+@command("edit stock", "редактировать stock", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
+def edit_stock(_id: str) -> None:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Stock)) as cur:
+        cur.execute("SELECT id, warehouse_id, product_id, quantity FROM catalog.products WHERE id = %s", (_id,))
+        stock: Stock | None = cur.fetchone()
+
+    if stock is None:
+        render_error(f"Stock с ID {_id} не найден")
+        return
+
+    quantity = prompt("Количество: ", default=stock.quantity, validator=PositiveIntValidator()).strip() 
+
+    conn.execute("""UPDATE inventory.stocks SET quantity = %s WHERE id = %s""", (quantity,  _id),)
+
+    console.print(f"[green]Stock {_id} обновлен [/green]")
+
+@command("delete stock", "удалить stock", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
+def delete_stock(_id: str) -> None:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Stock)) as cur:
+        cur.execute("SELECT id, warehouse_id, product_id, quantity FROM inventory.stocks WHERE id = %s", (_id,))
+        stock: Stock | None = cur.fetchone()
+
+    if stock is None:
+        render_error(f"Товар с ID {_id} не найден")
+        return
+
+    _render_stock(stock)
+
+    answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
+
+    if YesNoValidator.is_yes(answer):
+        conn.execute("DELETE FROM catalog.products WHERE id = %s", (_id,))
+        console.print(f"[green]Stock of {stock.product_id} from {stock.warehouse_id} удален [/green]")
