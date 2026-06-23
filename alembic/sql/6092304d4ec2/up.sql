@@ -50,8 +50,18 @@ CREATE TABLE IF NOT EXISTS inventory.routes (
 
 CREATE TABLE IF NOT EXISTS inventory.stock (
 	id serial PRIMARY KEY,
-    product INT REFERENCES catalog.products (id) NOT NULL,
-    quantity INT
+    warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL,
+    product_id INT REFERENCES catalog.products (id) NOT NULL,
+    quantity INT,
+    CONSTRAINT unique_stocks UNIQUE (warehouse_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS inventory.reserves (
+	id serial PRIMARY KEY,
+    order_id INT REFERENCES sales.orders (id) NOT NULL,
+    product_id INT REFERENCES catalog.products (id) NOT NULL,
+    quantity INT,
+    CONSTRAINT unique_reserves UNIQUE (order_id, product_id)
 );
 
 CREATE TABLE IF NOT EXISTS inventory.deliveries (
@@ -82,3 +92,6 @@ RESET ROLE;
 
 GRANT USAGE ON SCHEMA inventory to worker;
 GRANT SELECT, UPDATE ON ALL TABLES IN SCHEMA inventory to worker;
+
+insert into auth.users (username, password, role) VALUES ('worker', crypt('pass', gen_salt('bf')), 'worker');
+insert into auth.users (username, password, role) VALUES ('inv', crypt('pass', gen_salt('bf')), 'inventory_manager');
