@@ -19,6 +19,7 @@ from .warehouses import get_list_warehouses
 from .products import get_list_products
 
 from auth import _USER, ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER
+import auth
 
 
 states = [
@@ -105,7 +106,7 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
     console.print(table)
 
 
-@command("list orders", "список всех orders", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
+@command("list orders", "список всех orders", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
 def list_products() -> None:
     conn = get_conn()
     table = Table(title="Orders", show_header=True, header_style="bold cyan")
@@ -118,7 +119,11 @@ def list_products() -> None:
     table.add_column("Created by", style="red", min_width=20)
 
     with conn.cursor(row_factory=class_row(Order)) as cur:
-        cur.execute("SELECT * FROM sales.orders")
+        cur.execute("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
+                        "FROM sales.orders o " \
+                        "LEFT JOIN auth.users u ON o.created_by = u.id " \
+                        "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
+                        "LEFT JOIN catalog.cities c ON w.city = c.id")
         orders: list[Order] = cur.fetchall()
 
     for order in orders:
@@ -128,7 +133,7 @@ def list_products() -> None:
             str(order.total_amount),
             str(order.created_at),
             str(order.warehouse_id),
-            order.created_by,
+            str(order.created_by),
         )
     console.print(table)
 
@@ -152,7 +157,7 @@ def _render_order_item(item: Order_item):
 
     console.print(panel)
 
-@command("show order", "информация о заказе", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
+@command("show order", "информация о заказе", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
 def show_order(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Order)) as cur:
@@ -179,10 +184,11 @@ def add_order() -> None:
         options=get_list_warehouses(),
         default="",
     )
-    created_by: str = _USER.username
+
+    created_by: int = auth._USER.id
     
     conn.execute(
-        "INSERT INTO sales.orders (status, total_amount, created_at, warehouse_id) VALUES (%s, %s, %s, %s, %s)",
+        "INSERT INTO sales.orders (status, total_amount, created_at, warehouse_id, created_by) VALUES (%s, %s, %s, %s, %s)",
         (status, total_amount, created_at, warehouse_id, created_by),
     )
 
@@ -420,6 +426,8 @@ def delete_order_item(order_id: str, product_id: str) -> None:
     if YesNoValidator.is_yes(answer):
         conn.execute("DELETE FROM sales.order_items WHERE order_id = %s AND product_id = %s", (order_id, product_id))
 
+        recalc_order(order_id)
+
 @command("edit order status", "изменить статус заказа", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def publish_order(_id: str) -> None:
     conn = get_conn()
@@ -440,6 +448,4 @@ def publish_order(_id: str) -> None:
         conn.execute(
             """UPDATE sales.orders SET  status = %s WHERE id = %s""", (status, _id),
         )
-        console.print(f"[green]Заказ {order.id} опубликован [/green]")
-
-        recalc_order(order_id)
+        console.print(f"[green]Статус заказа {order.id} изменен на {status} [/green]")
