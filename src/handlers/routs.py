@@ -56,7 +56,7 @@ def _render_route(route: Route):  # pylint: disable=unused-argument
     console.print(panel)
 
 @command("list routes", "список всех routes", CATEGORY_ROUTES, [ROLE_INVENTORY_MANAGER, ROLE_WORKER])
-def list_products() -> None:
+def list_routes() -> None:
     conn = get_conn()
     table = Table(title="Routes", show_header=True, header_style="bold cyan")
 
@@ -74,14 +74,14 @@ def list_products() -> None:
         table.add_row(
             str(route.id),
             str(route.from_),
-            str(route.to),
+            str(route.to_),
             str(route.duration),
             str(route.total_threshold)
         )
     console.print(table)
 
 @command("show route", "информация о route", CATEGORY_ROUTES, [ROLE_INVENTORY_MANAGER, ROLE_WORKER])
-def show_order(_id: str) -> None:
+def show_route(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Route)) as cur:
         cur.execute("SELECT id, from_, to_, duration, total_threshold FROM inventory.routes WHERE id = %s", (_id,))
@@ -95,7 +95,7 @@ def show_order(_id: str) -> None:
 
 
 @command("add route", "добавить route (интерактивно)", CATEGORY_ROUTES, [ROLE_INVENTORY_MANAGER, ROLE_WORKER])
-def add_order() -> None:
+def add_route() -> None:
     conn = get_conn()
 
     global cities

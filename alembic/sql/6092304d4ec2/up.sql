@@ -78,8 +78,7 @@ CREATE TABLE IF NOT EXISTS inventory.reserves (
 );
 
 CREATE TABLE IF NOT EXISTS inventory.deliveries (
-    id serial PRIMARY KEY,
-    order_id INT REFERENCES sales.orders (id) NOT NULL,
+    order_id INT REFERENCES sales.orders (id) NOT NULL PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipping', 'shipped')),
     shipped_at TIMESTAMPTZ
@@ -92,22 +91,24 @@ CREATE TABLE IF NOT EXISTS  inventory.delivery_items (
     CONSTRAINT unique_delivery UNIQUE (warehouse_id, product_id)
 );
 CREATE TABLE IF NOT EXISTS  inventory.transfers (
-    id serial PRIMARY KEY,
     from_city_id INT REFERENCES catalog.cities (id) NOT NULL,
     to_city_id INT REFERENCES catalog.cities (id) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipping', 'in_transit', 'arrived', 'received')),
     started_at TIMESTAMPTZ,
     arriving_at TIMESTAMPTZ,
-    received_at TIMESTAMPTZ -- можно сделать ограничение, чтоб времна были последовательны
+    received_at TIMESTAMPTZ, -- можно сделать ограничение, чтоб времна были последовательны
+    PRIMARY KEY (from_city_id, to_city_id),
+    CONSTRAINT unique_delivery UNIQUE (from_city_id, to_city_id)
 );
 CREATE TABLE IF NOT EXISTS  inventory.transfer_items (
-    id serial PRIMARY KEY,
     transfer_id INT REFERENCES inventory.transfers (id) NOT NULL,
     product_id INT REFERENCES sales.products (id) NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipped', 'received')),
     requested_by INT REFERENCES auth.users (id) NOT NULL, 
-    reserve_id INT
+    reserve_id INT,
+    PRIMARY KEY (transfer_id, product_id),
+    CONSTRAINT unique_delivery UNIQUE (transfer_id, product_id)
 );
 
 GRANT USAGE ON SCHEMA inventory to worker;

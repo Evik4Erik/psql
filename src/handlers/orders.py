@@ -101,7 +101,7 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
     console.print(table)
 
 
-@command("list orders", "список всех orders", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+@command("list orders", "список всех orders", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def list_products() -> None:
     conn = get_conn()
     table = Table(title="Orders", show_header=True, header_style="bold cyan")
@@ -152,7 +152,7 @@ def _render_order_item(item: Order_item):
 
     console.print(panel)
 
-@command("show order", "информация о заказе", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+@command("show order", "информация о заказе", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def show_order(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Order)) as cur:
@@ -413,25 +413,3 @@ def delete_order_item(order_id: str, product_id: str) -> None:
         conn.execute("DELETE FROM sales.order_items WHERE order_id = %s AND product_id = %s", (order_id, product_id))
 
         recalc_order(order_id)
-
-@command("edit order status", "изменить статус заказа", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
-def publish_order(_id: str) -> None:
-    conn = get_conn()
-    with conn.cursor(row_factory=class_row(Order)) as cur:
-        cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
-        order: Order | None = cur.fetchone()
-
-    if order is None:
-        render_error(f"Заказ с ID {_id} не найден")
-        return
-
-    status = prompt("Статус: ", validator=states_validator, completer=states_completer, default=order.status).strip()
-    
-
-    answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
-
-    if YesNoValidator.is_yes(answer):
-        conn.execute(
-            """UPDATE sales.orders SET  status = %s WHERE id = %s""", (status, _id),
-        )
-        console.print(f"[green]Статус заказа {order.id} изменен на {status} [/green]")
