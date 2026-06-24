@@ -101,8 +101,7 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
     console.print(table)
 
 
-@command("list orders", "список всех orders", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
-def list_products() -> None:
+def _handle_list_orders(query: str):
     conn = get_conn()
     table = Table(title="Orders", show_header=True, header_style="bold cyan")
 
@@ -114,11 +113,7 @@ def list_products() -> None:
     table.add_column("Created by", style="red", min_width=20)
 
     with conn.cursor(row_factory=class_row(Order)) as cur:
-        cur.execute("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
-                        "FROM sales.orders o " \
-                        "LEFT JOIN auth.users u ON o.created_by = u.id " \
-                        "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
-                        "LEFT JOIN catalog.cities c ON w.city = c.id")
+        cur.execute(query)
         orders: list[Order] = cur.fetchall()
 
     for order in orders:
@@ -131,6 +126,41 @@ def list_products() -> None:
             str(order.created_by),
         )
     console.print(table)
+
+@command("list orders", "список всех orders", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+def list_orders() -> None:
+    _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
+                        "FROM sales.orders o " \
+                        "LEFT JOIN auth.users u ON o.created_by = u.id " \
+                        "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
+                        "LEFT JOIN catalog.cities c ON w.city = c.id")
+
+@command("list orders new", "список всех orders new", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+def list_orders_new() -> None:
+    _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
+                    "FROM sales.orders o " \
+                    "LEFT JOIN auth.users u ON o.created_by = u.id " \
+                    "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
+                    "LEFT JOIN catalog.cities c ON w.city = c.id " \
+                    "WHERE o.status = 'new'")
+    
+@command("list orders processing", "список всех orders processing", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+def list_orders_new() -> None:
+    _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
+                    "FROM sales.orders o " \
+                    "LEFT JOIN auth.users u ON o.created_by = u.id " \
+                    "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
+                    "LEFT JOIN catalog.cities c ON w.city = c.id " \
+                    "WHERE o.status = 'processing'")
+    
+@command("list orders my", "список всех orders my", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+def list_orders_new() -> None:
+    _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
+                    "FROM sales.orders o " \
+                    "LEFT JOIN auth.users u ON o.created_by = u.id " \
+                    "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
+                    "LEFT JOIN catalog.cities c ON w.city = c.id " \
+                    "WHERE o.created_by = %s", (auth._USER.id,))
 
 def _render_order_item(item: Order_item):
     table = Table(show_header=False, box=None, padding=(0, 2))
@@ -414,7 +444,7 @@ def delete_order_item(order_id: str, product_id: str) -> None:
 
         recalc_order(order_id)
 
-@command("edit order status", "изменить статус заказа", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
+@command("mark order processing", "изменить статус заказа to processing", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def publish_order(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Order)) as cur:
@@ -425,13 +455,8 @@ def publish_order(_id: str) -> None:
         render_error(f"Заказ с ID {_id} не найден")
         return
 
-    status = prompt("Статус: ", validator=states_validator, completer=states_completer, default=order.status).strip()
-    
-
     answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
 
     if YesNoValidator.is_yes(answer):
-        conn.execute(
-            """UPDATE sales.orders SET  status = %s WHERE id = %s""", (status, _id),
-        )
-        console.print(f"[green]Статус заказа {order.id} изменен на {status} [/green]")
+        conn.execute("""UPDATE sales.orders SET  status = 'processing' WHERE id = %s""", (_id,))
+        console.print(f"[green]Статус заказа {order.id} изменен на 'processing' [/green]")
