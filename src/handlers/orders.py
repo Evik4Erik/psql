@@ -16,12 +16,11 @@ from db import get_conn
 from validators import PriceValidator, NonEmptyValidator, YesNoValidator, ChoiceValidator, PositiveIntValidator
 
 from .warehouses import get_list_warehouses
-from .products import get_list_products
+#from .products import get_list_products
 
 from auth import _USER, ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER
 import auth
-
-import products
+import handlers.products
 
 
 states = [
@@ -135,7 +134,7 @@ def list_orders() -> None:
                         "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
                         "LEFT JOIN catalog.cities c ON w.city = c.id")
 
-@command("list orders new", "список всех orders new", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+@command("list orders_new", "список всех orders new", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
 def list_orders_new() -> None:
     _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
                     "FROM sales.orders o " \
@@ -144,7 +143,7 @@ def list_orders_new() -> None:
                     "LEFT JOIN catalog.cities c ON w.city = c.id " \
                     "WHERE o.status = 'new'")
     
-@command("list orders processing", "список всех orders processing", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+@command("list orders_processing", "список всех orders processing", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
 def list_orders_new() -> None:
     _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
                     "FROM sales.orders o " \
@@ -153,7 +152,7 @@ def list_orders_new() -> None:
                     "LEFT JOIN catalog.cities c ON w.city = c.id " \
                     "WHERE o.status = 'processing'")
     
-@command("list orders my", "список всех orders my", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+@command("list orders_my", "список всех orders my", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
 def list_orders_new() -> None:
     _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
                     "FROM sales.orders o " \
@@ -312,7 +311,7 @@ def add_order_item(order_id: str) -> None:
         
     products.products_list.clear()
 
-    products_tmp: dictionary = get_list_products()
+    products_tmp: dictionary = products.get_list_products()
 
     for key, value in products_tmp.items():
         products.products_list.append(value)
