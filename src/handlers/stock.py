@@ -81,7 +81,7 @@ def list_warehouse_stock() -> None:
             options=get_list_warehouses(),
             default="",
         )
-    _handle_list_stocks("SELECT id, warehouse_id, product_id, quantity FROM inventory.stocks WHERE warehouse_id = %s", (warehouse_id,))
+    _handle_list_stocks(f"SELECT id, warehouse_id, product_id, quantity FROM inventory.stocks WHERE warehouse_id = {warehouse_id}")
 
 @command("view product stocks", "список всех stocks товара", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_warehouse_stock() -> None:
@@ -97,7 +97,7 @@ def list_warehouse_stock() -> None:
             completer=handlers.products.products_completer,
         ).strip()
     product_id = next((k for k, v in products_tmp.items() if v == product))
-    _handle_list_stocks("SELECT id, warehouse_id, product_id, quantity FROM inventory.stocks WHERE product_id = %s", (product_id,))
+    _handle_list_stocks(f"SELECT id, warehouse_id, product_id, quantity FROM inventory.stocks WHERE product_id = {product_id}")
 
 @command("list stocks", "список всех stocks", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_stocks() -> None:
