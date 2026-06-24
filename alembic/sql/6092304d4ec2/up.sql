@@ -20,39 +20,52 @@ INSERT INTO catalog.cities (city) VALUES
     ('Пермь'),
     ('Волгоград');
 
-GRANT All PRIVILEGES ON TABLE catalog.cities to catalog_manager;
-GRANT SELECT ON TABLE catalog.cities to sales_manager;
+ALTER TABLE catalog.warehouses ADD COLUMN city_id TYPE INT;
 
-ALTER TABLE catalog.warehouses ALTER COLUMN city TYPE INT USING city::integer;
+UPDATE catalog.warehouses
+SET city_id = 
+    CASE 
+        WHEN city = 'Москва'            THEN 1
+        WHEN city = 'Санкт-Петербург'   THEN 2
+        WHEN city = 'Новосибирск'       THEN 3
+        WHEN city = 'Екатеринбург'      THEN 4
+        WHEN city = 'Казань'            THEN 5
+        WHEN city = 'Нижний Новгород'   THEN 6
+        WHEN city = 'Челябинск'         THEN 7
+        WHEN city = 'Самара'            THEN 8
+        WHEN city = 'Омск'              THEN 9
+        WHEN city = 'Ростов-на-Дону'    THEN 10
+        WHEN city = 'Уфа'               THEN 11
+        WHEN city = 'Красноярск'        THEN 12
+        WHEN city = 'Воронеж'           THEN 13
+        WHEN city = 'Пермь'             THEN 14
+        WHEN city = 'Волгоград'         THEN 15
+        ELSE 1
+    END;
+
+
+ALTER TABLE catalog.warehouses DROP COLUMN city;
 
 CREATE SCHEMA IF NOT EXISTS inventory;
 
-GRANT ALL ON SCHEMA inventory TO inventory_manager;
-GRANT All ON ALL TABLES IN SCHEMA inventory to inventory_manager;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA inventory to inventory_manager;
-
-GRANT ALL ON SCHEMA inventory TO app_user;
-GRANT All ON ALL TABLES IN SCHEMA inventory to app_user;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA inventory to app_user;
-
-GRANT USAGE ON SCHEMA catalog to inventory_manager;
---GRANT SELECT ON ALL TABLES IN SCHEMA catalog to inventory_manager;
-
-SET ROLE app_user;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_user GRANT ALL ON SCHEMA inventory TO inventory_manager;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_user IN SCHEMA inventory GRANT ALL ON TABLES TO inventory_manager;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_user IN SCHEMA inventory GRANT ALL ON SEQUENCES TO inventory_manager;
 
 CREATE TABLE IF NOT EXISTS inventory.routes (
-	id serial PRIMARY KEY,
-	from_ INT NOT NULL REFERENCES catalog.warehouses (id) NOT NULL,
-	to_ INT NOT NULL REFERENCES catalog.warehouses (id) NOT NULL,
-    duration INT NOT NULL, 
-    total_threshold DECIMAL NOT NULL
+	from_city_id INT NOT NULL REFERENCES catalog.cities (id) NOT NULL,
+	to_city_id INT NOT NULL REFERENCES catalog.cities (id) NOT NULL,
+    duration TIME NOT NULL, 
+    total_threshold DECIMAL NOT NULL,
+    PRIMARY KEY (from_city_id, to_city_id),
+    CONSTRAINT unique_routes UNIQUE (from_city_id, to_city_id) --??
 );
 
-CREATE TABLE IF NOT EXISTS inventory.stock (
-	id serial PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS inventory.stocks (
     warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL,
     product_id INT REFERENCES catalog.products (id) NOT NULL,
     quantity INT,
+    PRIMARY KEY (warehouse_id, product_id),
     CONSTRAINT unique_stocks UNIQUE (warehouse_id, product_id)
 );
 
@@ -66,17 +79,22 @@ CREATE TABLE IF NOT EXISTS inventory.reserves (
 
 CREATE TABLE IF NOT EXISTS inventory.deliveries (
     id serial PRIMARY KEY,
+    order_id INT REFERENCES sales.orders (id) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipping', 'shipped')),
     shipped_at TIMESTAMPTZ
 );
 CREATE TABLE IF NOT EXISTS  inventory.delivery_items (
-    id serial PRIMARY KEY,
-    order_id INT NOT NULL REFERENCES sales.orders (id) NOT NULL,
-    status TEXT NOT NULL CHECK ( status IN ('planned', 'shipped'))
+    delivery_id INT REFERENCES inventory.deliveries (id) NOT NULL,
+    product_id INT REFERENCES sales.products (id) NOT NULL,
+    status TEXT NOT NULL CHECK ( status IN ('planned', 'shipped')),
+    PRIMARY KEY (delivery_id, product_id),
+    CONSTRAINT unique_delivery UNIQUE (warehouse_id, product_id)
 );
 CREATE TABLE IF NOT EXISTS  inventory.transfers (
     id serial PRIMARY KEY,
+    from_city_id INT REFERENCES catalog.cities (id) NOT NULL,
+    to_city_id INT REFERENCES catalog.cities (id) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipping', 'in_transit', 'arrived', 'received')),
     started_at TIMESTAMPTZ,
@@ -85,13 +103,12 @@ CREATE TABLE IF NOT EXISTS  inventory.transfers (
 );
 CREATE TABLE IF NOT EXISTS  inventory.transfer_items (
     id serial PRIMARY KEY,
-    status TEXT NOT NULL CHECK ( status IN ('planned', 'shipped', 'received'))
+    transfer_id INT REFERENCES inventory.transfers (id) NOT NULL,
+    product_id INT REFERENCES sales.products (id) NOT NULL,
+    status TEXT NOT NULL CHECK ( status IN ('planned', 'shipped', 'received')),
+    requested_by INT REFERENCES auth.users (id) NOT NULL, 
+    reserve_id INT
 );
-
-RESET ROLE;
 
 GRANT USAGE ON SCHEMA inventory to worker;
 GRANT SELECT, UPDATE ON ALL TABLES IN SCHEMA inventory to worker;
-
-insert into auth.users (username, password, role) VALUES ('worker', crypt('pass', gen_salt('bf')), 'worker');
-insert into auth.users (username, password, role) VALUES ('inv', crypt('pass', gen_salt('bf')), 'inventory_manager');
