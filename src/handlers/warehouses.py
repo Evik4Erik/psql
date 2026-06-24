@@ -22,6 +22,21 @@ city_validator = ChoiceValidator(
     cities, message="Город должен быть из списка. Используйте Tab для автодополнения."
 )
 
+def _update_cities():
+    cities.clear()
+    cities_tmp: dictionary = get_list_cities()
+
+    for key, value in cities_tmp.items():
+        cities.append(value)
+
+def _get_city_validator() -> ChoiceValidator:
+    _update_cities()
+    return city_validator
+
+def _get_city_completer() -> WordCompleter:
+    _update_cities()
+    return city_completer
+
 
 @dataclass
 class Warehouse:
@@ -64,24 +79,25 @@ def _central_warehouse_exists() -> bool:
         return True
 
     return False
-    
 
-def get_list_warehouses()-> list[tuple[str,str]]:
+
+def get_list_warehouses() -> list[tuple[str, str]]:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Warehouse)) as cur:
         cur.execute("SELECT w.id, c.city, w.address, w.label, w.is_central FROM catalog.warehouses w  " \
-                        "LEFT JOIN catalog.cities c ON w.city = c.id")
+                    "LEFT JOIN catalog.cities c ON w.city = c.id")
         warehouses: list[Warehouse] = cur.fetchall()
 
-        list_tupl= [
-            (str(war.id), str(war.city) + " "+ str(war.address))
+        list_tupl = [
+            (str(war.id), str(war.city) + " " + str(war.address))
             for war in warehouses
         ]
 
         return list_tupl
 
 
-@command("list warehouses", "список всех складов", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+@command("list warehouses", "список всех складов", CATEGORY_WAREHOUSES,
+         [ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
 def list_warehouses() -> None:
     conn = get_conn()
     table = Table(title="Склады", show_header=True, header_style="bold cyan")
@@ -94,7 +110,7 @@ def list_warehouses() -> None:
 
     with conn.cursor(row_factory=class_row(Warehouse)) as cur:
         cur.execute("SELECT w.id, c.city, w.address, w.label, w.is_central FROM catalog.warehouses w  " \
-                        "LEFT JOIN catalog.cities c ON w.city = c.id")
+                    "LEFT JOIN catalog.cities c ON w.city = c.id")
         warehouses: list[Warehouse] = cur.fetchall()
 
     for warehouse in warehouses:
@@ -113,7 +129,7 @@ def show_warehouse(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Warehouse)) as cur:
         cur.execute("SELECT w.id, c.city, w.address, w.label, w.is_central FROM catalog.warehouses w  " \
-                        "LEFT JOIN catalog.cities c ON w.city = c.id WHERE w.id = %s", (_id,))
+                    "LEFT JOIN catalog.cities c ON w.city = c.id WHERE w.id = %s", (_id,))
         warehouse: Warehouse | None = cur.fetchone()
 
     if warehouse is None:
@@ -136,25 +152,19 @@ def get_list_cities() -> dictionary:
 
         return diction
 
+
 @command("add warehouse", "добавить склад (интерактивно)", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER])
 def add_warehouse() -> None:
     conn = get_conn()
 
-    global cities
-    cities.clear()
-
     cities_tmp: dictionary = get_list_cities()
 
-    for key, value in cities_tmp.items():
-        cities.append(value)
-
-
-    city_name = prompt("Город: ", validator=city_validator, completer=city_completer).strip()
+    city_name = prompt("Город: ", validator=_get_city_validator(), completer=_get_city_completer()).strip()
     city = list(cities_tmp.keys())[list(cities_tmp.values()).index(city_name)]
 
     address = prompt("Адрес: ", validator=NonEmptyValidator()).strip()
     label = prompt("Метка (необязательно): ").strip() or None
-    
+
     with conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM catalog.warehouses")
         row = cur.fetchone()
@@ -165,12 +175,12 @@ def add_warehouse() -> None:
         is_central = YesNoValidator.is_yes(answer)
     else:
         is_central = True
-    
+
     if is_central:
         conn.execute(
             """UPDATE catalog.warehouses SET is_central = false WHERE is_central = true""",
         )
-        
+
     conn.execute(
         "INSERT INTO catalog.warehouses (city, address, label, is_central) VALUES (%s, %s, %s, %s)",
         (city, address, label, is_central),
@@ -215,11 +225,13 @@ def edit_warehouse(_id: str) -> None:
             prompt("Метка (необязательно): ", default=warehouse.label or "").strip() or None
     )
 
+    set_is_central = False
+
     if not warehouse.is_central:
         answer = prompt("Wanna set is central? (y/n, д/н): ", validator=YesNoValidator())
         set_is_central = YesNoValidator.is_yes(answer)
 
-        if  set_is_central:
+        if set_is_central:
             conn.execute(
                 """UPDATE catalog.warehouses SET is_central = false WHERE is_central = true""",
             )
@@ -266,8 +278,8 @@ def delete_warehouse(_id: str) -> None:
                 next_warehouse: Warehouse | None = cur.fetchone()
 
                 if next_warehouse is None:
-                    return 
-                
+                    return
+
                 conn.execute(
                     """UPDATE catalog.warehouses SET is_central = %s WHERE id = %s""",
                     (True, next_warehouse.id),

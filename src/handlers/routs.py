@@ -15,7 +15,7 @@ from commands import command, CATEGORY_ROUTES
 from auth import _USER, ROLE_WORKER, ROLE_INVENTORY_MANAGER
 
 from prompt_toolkit.shortcuts import choice
-from .warehouses import get_list_warehouses, get_list_cities
+from .warehouses import get_list_warehouses, get_list_cities, _get_city_validator, _get_city_completer
 
 from sqlalchemy.dialects.oracle import dictionary
 
@@ -98,17 +98,11 @@ def show_route(_id: str) -> None:
 def add_route() -> None:
     conn = get_conn()
 
-    global cities
-    cities.clear()
-
     cities_tmp: dictionary = get_list_cities()
 
-    for key, value in cities_tmp.items():
-        cities.append(value)
-
-    from_= prompt("Город отправления: ", validator=city_validator, completer=city_completer).strip()
+    from_ = prompt("Город отправления: ", validator=_get_city_validator(), completer=_get_city_completer()).strip()
     from_ = list(cities_tmp.keys())[list(cities_tmp.values()).index(from_)] 
-    to_= prompt("Город прибытия: ", validator=city_validator, completer=city_completer).strip()
+    to_ = prompt("Город прибытия: ", validator=_get_city_validator(), completer=_get_city_completer()).strip()
     to_ = list(cities_tmp.keys())[list(cities_tmp.values()).index(to_)]
 
     duration = prompt("Delivery time: ", validator=PositiveIntValidator()), 

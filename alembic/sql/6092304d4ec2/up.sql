@@ -51,6 +51,7 @@ CREATE SCHEMA IF NOT EXISTS inventory;
 ALTER DEFAULT PRIVILEGES FOR ROLE app_user GRANT ALL ON SCHEMA inventory TO inventory_manager;
 ALTER DEFAULT PRIVILEGES FOR ROLE app_user IN SCHEMA inventory GRANT ALL ON TABLES TO inventory_manager;
 ALTER DEFAULT PRIVILEGES FOR ROLE app_user IN SCHEMA inventory GRANT ALL ON SEQUENCES TO inventory_manager;
+GRANT SELECT, UPDATE ON ALL sales.order IN SCHEMA sales to inventory_manager;
 
 CREATE TABLE IF NOT EXISTS inventory.routes (
 	from_city_id INT NOT NULL REFERENCES catalog.cities (id) NOT NULL,
@@ -81,12 +82,14 @@ CREATE TABLE IF NOT EXISTS inventory.deliveries (
     order_id INT REFERENCES sales.orders (id) NOT NULL PRIMARY KEY,
     created_at TIMESTAMPTZ NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipping', 'shipped')),
+    updated_at TIMESTAMPTZ,
     shipped_at TIMESTAMPTZ
 );
 CREATE TABLE IF NOT EXISTS  inventory.delivery_items (
     delivery_id INT REFERENCES inventory.deliveries (id) NOT NULL,
     product_id INT REFERENCES sales.products (id) NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipped')),
+    updated_at TIMESTAMPTZ,
     PRIMARY KEY (delivery_id, product_id),
     CONSTRAINT unique_delivery UNIQUE (warehouse_id, product_id)
 );
@@ -95,6 +98,7 @@ CREATE TABLE IF NOT EXISTS  inventory.transfers (
     to_city_id INT REFERENCES catalog.cities (id) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipping', 'in_transit', 'arrived', 'received')),
+    updated_at TIMESTAMPTZ,
     started_at TIMESTAMPTZ,
     arriving_at TIMESTAMPTZ,
     received_at TIMESTAMPTZ, -- можно сделать ограничение, чтоб времна были последовательны
@@ -105,11 +109,18 @@ CREATE TABLE IF NOT EXISTS  inventory.transfer_items (
     transfer_id INT REFERENCES inventory.transfers (id) NOT NULL,
     product_id INT REFERENCES sales.products (id) NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipped', 'received')),
-    requested_by INT REFERENCES auth.users (id) NOT NULL, 
+    updated_at TIMESTAMPTZ,
+    requested_by INT REFERENCES auth.users (id) NOT NULL,
     reserve_id INT,
     PRIMARY KEY (transfer_id, product_id),
     CONSTRAINT unique_delivery UNIQUE (transfer_id, product_id)
 );
 
 GRANT USAGE ON SCHEMA inventory to worker;
-GRANT SELECT, UPDATE ON ALL TABLES IN SCHEMA inventory to worker;
+GRANT ALL ON inventory.stocks IN SCHEMA inventory to worker;
+GRANT SELECT, UPDATE ON inventory.reserves IN SCHEMA inventory to worker;
+GRANT SELECT, UPDATE (status, updated_at) ON inventory.deliveries IN SCHEMA inventory to worker;
+GRANT SELECT, UPDATE (status, updated_at) ON inventory.delivery_items IN SCHEMA inventory to worker;
+GRANT SELECT, UPDATE (status, updated_at) ON inventory.transfers IN SCHEMA inventory to worker;
+GRANT SELECT, UPDATE (status, updated_at) ON inventory.transfer_items IN SCHEMA inventory to worker;
+GRANT SELECT ON ALL TABLES IN SCHEMA inventory to worker;
