@@ -14,28 +14,23 @@ from auth import ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGE
 
 from sqlalchemy.dialects.oracle import dictionary
 
-cities = [
-]
-
-city_completer = WordCompleter(cities, ignore_case=True, sentence=True)
-city_validator = ChoiceValidator(
-    cities, message="Город должен быть из списка. Используйте Tab для автодополнения."
-)
-
-def _update_cities():
-    cities.clear()
-    cities_tmp: dictionary = get_list_cities()
-
-    for key, value in cities_tmp.items():
-        cities.append(value)
 
 def _get_city_validator() -> ChoiceValidator:
-    _update_cities()
-    return city_validator
+    return ChoiceValidator(
+        get_list_cities(), message="Город должен быть из списка. Используйте Tab для автодополнения."
+    )
 
 def _get_city_completer() -> WordCompleter:
-    _update_cities()
-    return city_completer
+    return WordCompleter(get_list_cities(), ignore_case=True, sentence=True)
+
+def _get_city_id_by_name(city_name: str) -> int:
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM catalog.cities WHERE city = %s", (city_name,))
+        row = cur.fetchone()
+        city_id = row[0]
+
+        return city_id
 
 
 @dataclass
@@ -139,28 +134,20 @@ def show_warehouse(_id: str) -> None:
     _render_warehouse(warehouse)
 
 
-def get_list_cities() -> dictionary:
+def get_list_cities() -> list:
     conn = get_conn()
     with conn.cursor() as cur:
-        cur.execute("SELECT id, city FROM catalog.cities")
-        rows = cur.fetchall()
+        cur.execute("SELECT city FROM catalog.cities")
+        cities: list = cur.fetchall()
 
-        diction = {}
-
-        for row in rows:
-            diction[row[0]] = row[1]
-
-        return diction
+        return cities
 
 
 @command("add warehouse", "добавить склад (интерактивно)", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER])
 def add_warehouse() -> None:
     conn = get_conn()
 
-    cities_tmp: dictionary = get_list_cities()
-
     city_name = prompt("Город: ", validator=_get_city_validator(), completer=_get_city_completer()).strip()
-    city = list(cities_tmp.keys())[list(cities_tmp.values()).index(city_name)]
 
     address = prompt("Адрес: ", validator=NonEmptyValidator()).strip()
     label = prompt("Метка (необязательно): ").strip() or None
@@ -183,7 +170,7 @@ def add_warehouse() -> None:
 
     conn.execute(
         "INSERT INTO catalog.warehouses (city, address, label, is_central) VALUES (%s, %s, %s, %s)",
-        (city, address, label, is_central),
+        (city_name, address, label, is_central),
     )
     if label:
         console.print(f"[green]Склад в городе {city_name} ({label}) добавлен [/green]")
@@ -202,21 +189,12 @@ def edit_warehouse(_id: str) -> None:
         render_error(f"Склад с ID {_id} не найден")
         return
 
-    global cities
-    cities.clear()
-
-    cities_tmp: dictionary = get_list_cities()
-
-    for key, value in cities_tmp.items():
-        cities.append(value)
-
     city = prompt(
         "Город: ",
         default=warehouse.city,
-        validator=city_validator,
-        completer=city_completer,
+        validator=_get_city_validator(),
+        completer=_get_city_completer(),
     ).strip()
-    city = list(cities_tmp.keys())[list(cities_tmp.values()).index(city)]
 
     address = prompt(
         "Адрес: ", default=warehouse.address, validator=NonEmptyValidator()

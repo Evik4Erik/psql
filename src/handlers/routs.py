@@ -15,15 +15,10 @@ from commands import command, CATEGORY_ROUTES
 from auth import _USER, ROLE_WORKER, ROLE_INVENTORY_MANAGER
 
 from prompt_toolkit.shortcuts import choice
-from .warehouses import get_list_warehouses, get_list_cities, _get_city_validator, _get_city_completer
+from .warehouses import get_list_warehouses, _get_city_id_by_name, _get_city_validator, _get_city_completer
 
 from sqlalchemy.dialects.oracle import dictionary
 
-cities = []
-city_completer = WordCompleter(cities, ignore_case=True, sentence=True)
-city_validator = ChoiceValidator(
-    cities, message="Город должен быть из списка. Используйте Tab для автодополнения."
-)
 
 
 @dataclass
@@ -98,12 +93,10 @@ def show_route(_id: str) -> None:
 def add_route() -> None:
     conn = get_conn()
 
-    cities_tmp: dictionary = get_list_cities()
-
     from_ = prompt("Город отправления: ", validator=_get_city_validator(), completer=_get_city_completer()).strip()
-    from_ = list(cities_tmp.keys())[list(cities_tmp.values()).index(from_)] 
+    from_ = _get_city_id_by_name(from_)
     to_ = prompt("Город прибытия: ", validator=_get_city_validator(), completer=_get_city_completer()).strip()
-    to_ = list(cities_tmp.keys())[list(cities_tmp.values()).index(to_)]
+    to_ = _get_city_id_by_name(to_)
 
     duration = prompt("Delivery time: ", validator=PositiveIntValidator()), 
     total_threshold = prompt("Min order summ: ", validator=PriceValidator())
