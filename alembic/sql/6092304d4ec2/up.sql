@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS inventory.routes (
     total_threshold DECIMAL NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS inventory.stock (
+CREATE TABLE IF NOT EXISTS inventory.stocks (
 	id serial PRIMARY KEY,
     warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL,
     product_id INT REFERENCES catalog.products (id) NOT NULL,
