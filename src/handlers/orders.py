@@ -21,7 +21,6 @@ from .products import get_list_products
 from auth import _USER, ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER
 import auth
 
-import products
 
 
 states = [
