@@ -20,7 +20,7 @@ INSERT INTO catalog.cities (city) VALUES
     ('Пермь'),
     ('Волгоград');
 
-ALTER TABLE catalog.warehouses ADD COLUMN city_id TYPE INT;
+ALTER TABLE catalog.warehouses ADD COLUMN city_id INT;
 
 UPDATE catalog.warehouses
 SET city_id = 
@@ -48,10 +48,9 @@ ALTER TABLE catalog.warehouses DROP COLUMN city;
 
 CREATE SCHEMA IF NOT EXISTS inventory;
 
-ALTER DEFAULT PRIVILEGES FOR ROLE app_user GRANT ALL ON SCHEMA inventory TO inventory_manager;
 ALTER DEFAULT PRIVILEGES FOR ROLE app_user IN SCHEMA inventory GRANT ALL ON TABLES TO inventory_manager;
 ALTER DEFAULT PRIVILEGES FOR ROLE app_user IN SCHEMA inventory GRANT ALL ON SEQUENCES TO inventory_manager;
-GRANT SELECT, UPDATE ON ALL sales.order IN SCHEMA sales to inventory_manager;
+GRANT SELECT, UPDATE ON sales.orders to inventory_manager;
 
 CREATE TABLE IF NOT EXISTS inventory.routes (
 	from_city_id INT NOT NULL REFERENCES catalog.cities (id) NOT NULL,
@@ -91,7 +90,7 @@ CREATE TABLE IF NOT EXISTS  inventory.delivery_items (
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipped')),
     updated_at TIMESTAMPTZ,
     PRIMARY KEY (delivery_id, product_id),
-    CONSTRAINT unique_delivery UNIQUE (warehouse_id, product_id)
+    CONSTRAINT unique_delivery UNIQUE (delivery_id, product_id)
 );
 CREATE TABLE IF NOT EXISTS  inventory.transfers (
     from_city_id INT REFERENCES catalog.cities (id) NOT NULL,
@@ -117,10 +116,10 @@ CREATE TABLE IF NOT EXISTS  inventory.transfer_items (
 );
 
 GRANT USAGE ON SCHEMA inventory to worker;
-GRANT ALL ON inventory.stocks IN SCHEMA inventory to worker;
-GRANT SELECT, UPDATE ON inventory.reserves IN SCHEMA inventory to worker;
-GRANT SELECT, UPDATE (status, updated_at) ON inventory.deliveries IN SCHEMA inventory to worker;
-GRANT SELECT, UPDATE (status, updated_at) ON inventory.delivery_items IN SCHEMA inventory to worker;
-GRANT SELECT, UPDATE (status, updated_at) ON inventory.transfers IN SCHEMA inventory to worker;
-GRANT SELECT, UPDATE (status, updated_at) ON inventory.transfer_items IN SCHEMA inventory to worker;
+GRANT ALL ON inventory.stocks to worker;
+GRANT SELECT, UPDATE ON inventory.reserves to worker;
+GRANT SELECT, UPDATE (status, updated_at) ON inventory.deliveries to worker;
+GRANT SELECT, UPDATE (status, updated_at) ON inventory.delivery_items to worker;
+GRANT SELECT, UPDATE (status, updated_at) ON inventory.transfers to worker;
+GRANT SELECT, UPDATE (status, updated_at) ON inventory.transfer_items to worker;
 GRANT SELECT ON ALL TABLES IN SCHEMA inventory to worker;
