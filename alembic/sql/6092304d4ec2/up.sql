@@ -57,16 +57,14 @@ CREATE TABLE IF NOT EXISTS inventory.routes (
 	to_city_id INT NOT NULL REFERENCES catalog.cities (id) NOT NULL,
     duration TIME NOT NULL, 
     total_threshold DECIMAL NOT NULL,
-    PRIMARY KEY (from_city_id, to_city_id),
-    CONSTRAINT unique_routes UNIQUE (from_city_id, to_city_id) --??
+    PRIMARY KEY (from_city_id, to_city_id)
 );
 
 CREATE TABLE IF NOT EXISTS inventory.stocks (
     warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL,
     product_id INT REFERENCES catalog.products (id) NOT NULL,
     quantity INT,
-    PRIMARY KEY (warehouse_id, product_id),
-    CONSTRAINT unique_stocks UNIQUE (warehouse_id, product_id)
+    PRIMARY KEY (warehouse_id, product_id)
 );
 
 CREATE TABLE IF NOT EXISTS inventory.reserves (
@@ -85,17 +83,16 @@ CREATE TABLE IF NOT EXISTS inventory.deliveries (
     shipped_at TIMESTAMPTZ
 );
 CREATE TABLE IF NOT EXISTS  inventory.delivery_items (
-    delivery_id INT REFERENCES inventory.deliveries (order_id) NOT NULL,
+    order_id INT REFERENCES inventory.deliveries (order_id) NOT NULL,
     product_id INT REFERENCES catalog.products (id) NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipped')),
     updated_at TIMESTAMPTZ,
-    PRIMARY KEY (delivery_id, product_id),
-    CONSTRAINT unique_delivery_items  UNIQUE (delivery_id, product_id)
+    PRIMARY KEY (delivery_id, product_id)
 );
 CREATE TABLE IF NOT EXISTS  inventory.transfers (
     id SERIAL PRIMARY KEY,
-    from_city_id INT REFERENCES catalog.cities (id) NOT NULL,
-    to_city_id INT REFERENCES catalog.cities (id) NOT NULL,
+    from_warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL,
+    to_warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipping', 'in_transit', 'arrived', 'received')),
     updated_at TIMESTAMPTZ,
@@ -106,14 +103,14 @@ CREATE TABLE IF NOT EXISTS  inventory.transfers (
     CONSTRAINT unique_transfer UNIQUE (from_city_id, to_city_id)
 );
 CREATE TABLE IF NOT EXISTS  inventory.transfer_items (
+    id serial PRIMARY KEY,
     transfer_id INT REFERENCES inventory.transfers (id) NOT NULL,
     product_id INT REFERENCES catalog.products (id) NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipped', 'received')),
+    quantity INT NOT NULL,
     updated_at TIMESTAMPTZ,
     requested_by INT REFERENCES auth.users (id) NOT NULL,
-    reserve_id INT,
-    PRIMARY KEY (transfer_id, product_id),
-    CONSTRAINT unique_transfer_items UNIQUE (transfer_id, product_id)
+    reserve_id INT
 );
 
 GRANT USAGE ON SCHEMA inventory to worker;
