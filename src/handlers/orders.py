@@ -145,7 +145,6 @@ def list_orders_new() -> None:
     
 @command("list orders processing", "список всех orders processing", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
 def list_orders_processing() -> None:
-3 (Update orders.py)
     _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
                     "FROM sales.orders o " \
                     "LEFT JOIN auth.users u ON o.created_by = u.id " \
