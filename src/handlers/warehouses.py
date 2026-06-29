@@ -10,30 +10,27 @@ from console import console, render_error
 from db import get_conn
 from validators import ChoiceValidator, NonEmptyValidator, YesNoValidator
 from commands import command, CATEGORY_WAREHOUSES
-from auth import ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER
+from auth import ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER
 
-cities = [
-    "Москва",
-    "Санкт-Петербург",
-    "Новосибирск",
-    "Екатеринбург",
-    "Казань",
-    "Нижний Новгород",
-    "Челябинск",
-    "Самара",
-    "Омск",
-    "Ростов-на-Дону",
-    "Уфа",
-    "Красноярск",
-    "Воронеж",
-    "Пермь",
-    "Волгоград",
-]
+from sqlalchemy.dialects.oracle import dictionary
 
-city_completer = WordCompleter(cities, ignore_case=True, sentence=True)
-city_validator = ChoiceValidator(
-    cities, message="Город должен быть из списка. Используйте Tab для автодополнения."
-)
+
+def _get_city_validator() -> ChoiceValidator:
+    return ChoiceValidator(
+        get_list_cities(), message="Город должен быть из списка. Используйте Tab для автодополнения."
+    )
+
+def _get_city_completer() -> WordCompleter:
+    return WordCompleter(get_list_cities(), ignore_case=True, sentence=True)
+
+def _get_city_id_by_name(city_name: str) -> int:
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM catalog.cities WHERE city = %s", (city_name,))
+        row = cur.fetchone()
+        city_id = row[0]
+
+        return city_id
 
 
 @dataclass
@@ -77,23 +74,25 @@ def _central_warehouse_exists() -> bool:
         return True
 
     return False
-    
 
-def get_list_warehouses()-> list[tuple[str,str]]:
+
+def get_list_warehouses() -> list[tuple[str, str]]:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Warehouse)) as cur:
-        cur.execute("SELECT id, city, address, label, is_central FROM catalog.warehouses")
+        cur.execute("SELECT w.id, c.city, w.address, w.label, w.is_central FROM catalog.warehouses w  " \
+                    "LEFT JOIN catalog.cities c ON w.city = c.id")
         warehouses: list[Warehouse] = cur.fetchall()
 
-        list_tupl= [
-            (str(war.id), str(war.city) + " "+ str(war.address))
+        list_tupl = [
+            (str(war.id), str(war.city) + " " + str(war.address))
             for war in warehouses
         ]
 
         return list_tupl
 
 
-@command("list warehouses", "список всех складов", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER])
+@command("list warehouses", "список всех складов", CATEGORY_WAREHOUSES,
+         [ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
 def list_warehouses() -> None:
     conn = get_conn()
     table = Table(title="Склады", show_header=True, header_style="bold cyan")
@@ -105,7 +104,8 @@ def list_warehouses() -> None:
     table.add_column("Центральный", style="blue", min_width=15)
 
     with conn.cursor(row_factory=class_row(Warehouse)) as cur:
-        cur.execute("SELECT * FROM catalog.warehouses")
+        cur.execute("SELECT w.id, c.city, w.address, w.label, w.is_central FROM catalog.warehouses w  " \
+                    "LEFT JOIN catalog.cities c ON w.city_id = c.id")
         warehouses: list[Warehouse] = cur.fetchall()
 
     for warehouse in warehouses:
@@ -123,7 +123,8 @@ def list_warehouses() -> None:
 def show_warehouse(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Warehouse)) as cur:
-        cur.execute("SELECT * FROM catalog.warehouses WHERE id = %s", (_id,))
+        cur.execute("SELECT w.id, c.city, w.address, w.label, w.is_central FROM catalog.warehouses w  " \
+                    "LEFT JOIN catalog.cities c ON w.city_id = c.id WHERE w.id = %s", (_id,))
         warehouse: Warehouse | None = cur.fetchone()
 
     if warehouse is None:
@@ -133,13 +134,28 @@ def show_warehouse(_id: str) -> None:
     _render_warehouse(warehouse)
 
 
+def get_list_cities() -> list[str]:
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("SELECT city FROM catalog.cities")
+        rows: list = cur.fetchall()
+
+        cities: list[str] = []
+        for row in rows:
+            cities.append(row[0])
+
+        return cities
+
+
 @command("add warehouse", "добавить склад (интерактивно)", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER])
 def add_warehouse() -> None:
     conn = get_conn()
-    city = prompt("Город: ", validator=city_validator, completer=city_completer).strip()
+
+    city_name = prompt("Город: ", validator=_get_city_validator(), completer=_get_city_completer()).strip()
+    city_id = _get_city_id_by_name(city_name)
     address = prompt("Адрес: ", validator=NonEmptyValidator()).strip()
     label = prompt("Метка (необязательно): ").strip() or None
-    
+
     with conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM catalog.warehouses")
         row = cur.fetchone()
@@ -150,20 +166,20 @@ def add_warehouse() -> None:
         is_central = YesNoValidator.is_yes(answer)
     else:
         is_central = True
-    
+
     if is_central:
         conn.execute(
             """UPDATE catalog.warehouses SET is_central = false WHERE is_central = true""",
         )
-        
+
     conn.execute(
-        "INSERT INTO catalog.warehouses (city, address, label, is_central) VALUES (%s, %s, %s, %s)",
-        (city, address, label, is_central),
+        "INSERT INTO catalog.warehouses (city_id, address, label, is_central) VALUES (%s, %s, %s, %s)",
+        (city_id, address, label, is_central),
     )
     if label:
-        console.print(f"[green]Склад в городе {city} ({label}) добавлен [/green]")
+        console.print(f"[green]Склад в городе {city_name} ({label}) добавлен [/green]")
     else:
-        console.print(f"[green]Склад в городе {city} добавлен [/green]")
+        console.print(f"[green]Склад в городе {city_name} добавлен [/green]")
 
 
 @command("edit warehouse", "редактировать склад", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER])
@@ -177,12 +193,15 @@ def edit_warehouse(_id: str) -> None:
         render_error(f"Склад с ID {_id} не найден")
         return
 
-    city = prompt(
+    city_name = prompt(
         "Город: ",
         default=warehouse.city,
-        validator=city_validator,
-        completer=city_completer,
+        validator=_get_city_validator(),
+        completer=_get_city_completer(),
     ).strip()
+
+    city_id = _get_city_id_by_name(city_name)
+
     address = prompt(
         "Адрес: ", default=warehouse.address, validator=NonEmptyValidator()
     ).strip()
@@ -190,19 +209,21 @@ def edit_warehouse(_id: str) -> None:
             prompt("Метка (необязательно): ", default=warehouse.label or "").strip() or None
     )
 
+    set_is_central = False
+
     if not warehouse.is_central:
         answer = prompt("Wanna set is central? (y/n, д/н): ", validator=YesNoValidator())
         set_is_central = YesNoValidator.is_yes(answer)
 
-        if  set_is_central:
+        if set_is_central:
             conn.execute(
                 """UPDATE catalog.warehouses SET is_central = false WHERE is_central = true""",
             )
 
     conn.execute(
-        """UPDATE catalog.warehouses SET city = %s, address = %s, label = %s, is_central = %s
+        """UPDATE catalog.warehouses SET city_id = %s, address = %s, label = %s, is_central = %s
         WHERE id = %s""",
-        (city, address, label, set_is_central, _id),
+        (city_id, address, label, set_is_central, _id),
     )
 
     if label:
@@ -239,6 +260,10 @@ def delete_warehouse(_id: str) -> None:
             with conn.cursor(row_factory=class_row(Warehouse)) as cur:
                 cur.execute("SELECT * FROM catalog.warehouses")
                 next_warehouse: Warehouse | None = cur.fetchone()
+
+                if next_warehouse is None:
+                    return
+
                 conn.execute(
                     """UPDATE catalog.warehouses SET is_central = %s WHERE id = %s""",
                     (True, next_warehouse.id),

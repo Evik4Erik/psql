@@ -9,12 +9,22 @@ from sqlalchemy.dialects.oracle import dictionary
 
 from console import console, render_error
 from db import get_conn
-from validators import PriceValidator, NonEmptyValidator, YesNoValidator
+from validators import PriceValidator, NonEmptyValidator, YesNoValidator, ChoiceValidator
 
 from commands import command, CATEGORY_PRODUCTS
 from .product_category import _get_list_category
 from prompt_toolkit.shortcuts import choice
 from auth import ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER
+
+from prompt_toolkit.completion import WordCompleter
+
+products_list = []
+
+products_completer = WordCompleter(products_list, ignore_case=True, sentence=True)
+products_validator = ChoiceValidator(
+    products_list, message="Product должен быть из списка. Используйте Tab для автодополнения."
+)
+
 
 @dataclass
 class Product:

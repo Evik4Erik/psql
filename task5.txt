@@ -1,0 +1,2 @@
+CREATE ROLE inventory_manager WITH LOGIN;
+CREATE ROLE worker WITH LOGIN;
