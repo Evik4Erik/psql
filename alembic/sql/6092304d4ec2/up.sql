@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS  inventory.transfer_items (
     quantity INT NOT NULL,
     updated_at TIMESTAMPTZ,
     requested_by INT REFERENCES auth.users (id) NOT NULL,
-    reserve_id INT REFERENCES inventory.reserves (id) 
+    reserve_id INT REFERENCES inventory.reserves (id)
 );
 
 GRANT USAGE ON SCHEMA inventory to worker;
