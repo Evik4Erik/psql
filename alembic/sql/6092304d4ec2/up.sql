@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS  inventory.delivery_items (
     product_id INT REFERENCES catalog.products (id) NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipped')),
     updated_at TIMESTAMPTZ,
-    PRIMARY KEY (delivery_id, product_id)
+    PRIMARY KEY (order_id, product_id)
 );
 CREATE TABLE IF NOT EXISTS  inventory.transfers (
     id SERIAL PRIMARY KEY,
@@ -99,8 +99,7 @@ CREATE TABLE IF NOT EXISTS  inventory.transfers (
     started_at TIMESTAMPTZ,
     arriving_at TIMESTAMPTZ,
     received_at TIMESTAMPTZ, -- можно сделать ограничение, чтоб времна были последовательны
-    --PRIMARY KEY (from_city_id, to_city_id),
-    CONSTRAINT unique_transfer UNIQUE (from_city_id, to_city_id)
+    CONSTRAINT unique_transfer UNIQUE (from_warehouse_id, to_warehouse_id)
 );
 CREATE TABLE IF NOT EXISTS  inventory.transfer_items (
     id serial PRIMARY KEY,
@@ -110,7 +109,7 @@ CREATE TABLE IF NOT EXISTS  inventory.transfer_items (
     quantity INT NOT NULL,
     updated_at TIMESTAMPTZ,
     requested_by INT REFERENCES auth.users (id) NOT NULL,
-    reserve_id INT
+    reserve_id INT REFERENCES inventory.reserves (id) 
 );
 
 GRANT USAGE ON SCHEMA inventory to worker;
