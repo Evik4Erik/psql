@@ -89,6 +89,30 @@ def get_list_warehouses() -> list[tuple[str, str]]:
         ]
 
         return list_tupl
+    
+def get_list_warehouses_for_routes(direction: str) -> list[tuple[str, str]]:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Warehouse)) as cur:
+        if(direction == "from"):
+            cur.execute("SELECT w.id, w.address, w.label, w.is_central, w.city_id as city FROM catalog.warehouses w  " \
+                    "LEFT JOIN inventory.routes r ON w.city_id = r.from_city_id " \
+                    "WHERE w.city_id = r.from_city_id")
+        else:
+            cur.execute("SELECT w.id, w.address, w.label, w.is_central, w.city_id as city FROM catalog.warehouses w  " \
+                    "LEFT JOIN inventory.routes r ON w.city_id = r.to_city_id " \
+                    "WHERE w.city_id = r.to_city_id")
+        warehouses: list[Warehouse] = cur.fetchall()
+
+        if len(warehouses) == 0:
+            render_error(f"Не найдено ни одного подходящего склада")
+            return []
+
+        list_tupl = [
+            (str(war.id), str(war.city) + " " + str(war.address))
+            for war in warehouses
+        ]
+
+        return list_tupl
 
 
 @command("list warehouses", "список всех складов", CATEGORY_WAREHOUSES,
@@ -227,9 +251,9 @@ def edit_warehouse(_id: str) -> None:
     )
 
     if label:
-        console.print(f"[green]Склад в городе {city} ({label}) обновлен [/green]")
+        console.print(f"[green]Склад в городе {city_name} ({label}) обновлен [/green]")
     else:
-        console.print(f"[green]Склад в городе {city} обновлен [/green]")
+        console.print(f"[green]Склад в городе {city_name} обновлен [/green]")
 
 
 @command("delete warehouse", "удалить склад", CATEGORY_WAREHOUSES, [ROLE_CATALOG_MANAGER])

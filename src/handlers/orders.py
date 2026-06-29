@@ -127,7 +127,7 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
     console.print(table)
 
 
-def _handle_list_orders(query: str):
+def _handle_list_orders(query: str, args: list):
     conn = get_conn()
     table = Table(title="Orders", show_header=True, header_style="bold cyan")
 
@@ -139,7 +139,7 @@ def _handle_list_orders(query: str):
     table.add_column("Created by", style="red", min_width=20)
 
     with conn.cursor(row_factory=class_row(Order)) as cur:
-        cur.execute(query)
+        cur.execute(query, args)
         orders: list[Order] = cur.fetchall()
 
     for order in orders:
@@ -153,40 +153,48 @@ def _handle_list_orders(query: str):
         )
     console.print(table)
 
+def _get_order_list() ->list[str]:
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Order)) as cur:
+        cur.execute("""SELECT o.id FROM sales.orders o """)
+        orders: list[str] = cur.fetchall()
+
+        return orders
+
 @command("list orders", "список всех orders", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def list_orders() -> None:
-    _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
-                        "FROM sales.orders o " \
-                        "LEFT JOIN auth.users u ON o.created_by = u.id " \
-                        "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
-                        "LEFT JOIN catalog.cities c ON w.city_id = c.id")
+    _handle_list_orders("""SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by 
+                        FROM sales.orders o 
+                        LEFT JOIN auth.users u ON o.created_by = u.id 
+                        LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id 
+                        LEFT JOIN catalog.cities c ON w.city_id = c.id""")
 
 @command("list orders_new", "список всех orders new", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_orders_new() -> None:
-    _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
-                    "FROM sales.orders o " \
-                    "LEFT JOIN auth.users u ON o.created_by = u.id " \
-                    "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
-                    "LEFT JOIN catalog.cities c ON w.city_id = c.id " \
-                    "WHERE o.status = 'new'")
+    _handle_list_orders("""SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by 
+                    FROM sales.orders o 
+                    LEFT JOIN auth.users u ON o.created_by = u.id 
+                    LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id 
+                    LEFT JOIN catalog.cities c ON w.city_id = c.id 
+                    WHERE o.status = 'new'""")
     
 @command("list orders_processing", "список всех orders processing", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_orders_processing() -> None:
-    _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
-                    "FROM sales.orders o " \
-                    "LEFT JOIN auth.users u ON o.created_by = u.id " \
-                    "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
-                    "LEFT JOIN catalog.cities c ON w.city_id = c.id " \
-                    "WHERE o.status = 'processing'")
+    _handle_list_orders("""SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by 
+                    FROM sales.orders o 
+                    LEFT JOIN auth.users u ON o.created_by = u.id 
+                    LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id 
+                    LEFT JOIN catalog.cities c ON w.city_id = c.id 
+                    WHERE o.status = 'processing'""")
     
 @command("list orders_my", "список всех orders my", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_orders_my() -> None:
-    _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
-                    "FROM sales.orders o " \
-                    "LEFT JOIN auth.users u ON o.created_by = u.id " \
-                    "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
-                    "LEFT JOIN catalog.cities c ON w.city_id = c.id " \
-                    f"WHERE o.created_by = {auth_user().id}")
+    _handle_list_orders("""SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by 
+                    FROM sales.orders o 
+                    LEFT JOIN auth.users u ON o.created_by = u.id 
+                    LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id 
+                    LEFT JOIN catalog.cities c ON w.city_id = c.id
+                    WHERE o.created_by = %s""", (auth_user().id,))
 
 def _render_order_item(item: Order_item):
     table = Table(show_header=False, box=None, padding=(0, 2))
@@ -463,7 +471,7 @@ def delete_order_item(order_id: str, product_id: str) -> None:
         conn.execute("DELETE FROM sales.order_items WHERE order_id = %s AND product_id = %s", (order_id, product_id))
         recalc_order(order_id)
 
-@command("mark order processing", "изменить статус заказа to processing", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
+@command("mark order_processing", "изменить статус заказа to processing", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def mark_order_processing(_id: str) -> None:
     conn = get_conn()
     conn.execute("BEGIN")
@@ -478,7 +486,7 @@ def mark_order_processing(_id: str) -> None:
     answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
 
     if YesNoValidator.is_yes(answer):
-        conn.execute("""UPDATE sales.orders SET  status = 'processing' WHERE id = %s""", (_id,))
+        conn.execute("""UPDATE sales.orders SET processed_by = %s, status = 'processing' WHERE id = %s""", (auth_user().id, _id,))
         conn.execute("COMMIT")
         console.print(f"[green]Статус заказа {order.id} изменен на 'processing' [/green]")
     else:

@@ -43,6 +43,7 @@ SET city_id =
         ELSE 1
     END;
 
+ALTER TABLE sales.orders ADD COLUMN processed_by INT REFERENCES auth.users (id);
 
 ALTER TABLE catalog.warehouses DROP COLUMN city;
 
@@ -110,7 +111,8 @@ CREATE TABLE IF NOT EXISTS  inventory.transfer_items (
     quantity INT NOT NULL,
     updated_at TIMESTAMPTZ,
     requested_by INT REFERENCES auth.users (id) NOT NULL,
-    reserve_id INT REFERENCES inventory.reserves (id)
+    reserve_id INT REFERENCES inventory.reserves (id),
+    CONSTRAINT unique_reserves UNIQUE (transfer_id, product_id, requested_by, reserve_id)
 );
 
 GRANT USAGE ON SCHEMA inventory to worker;

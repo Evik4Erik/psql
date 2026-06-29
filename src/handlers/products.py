@@ -47,7 +47,6 @@ def _get_product_validator() -> ChoiceValidator:
 
 def _get_product_completer() -> WordCompleter:
     return WordCompleter(get_products_list(), ignore_case=True, sentence=True)
-        return products
 
 def _get_product_id_by_name(product_name: str) -> int:
     conn = get_conn()
