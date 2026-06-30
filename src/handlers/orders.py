@@ -132,7 +132,7 @@ def list_orders() -> None:
                         "FROM sales.orders o " \
                         "LEFT JOIN auth.users u ON o.created_by = u.id " \
                         "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
-                        "LEFT JOIN catalog.cities c ON w.city = c.id")
+                        "LEFT JOIN catalog.cities c ON w.city_id = c.id")
 
 @command("list orders_new", "список всех orders new", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
 def list_orders_new() -> None:
@@ -140,26 +140,26 @@ def list_orders_new() -> None:
                     "FROM sales.orders o " \
                     "LEFT JOIN auth.users u ON o.created_by = u.id " \
                     "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
-                    "LEFT JOIN catalog.cities c ON w.city = c.id " \
+                    "LEFT JOIN catalog.cities c ON w.city_id = c.id " \
                     "WHERE o.status = 'new'")
     
-@command("list orders processing", "список всех orders processing", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+@command("list orders_processing", "список всех orders processing", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
 def list_orders_processing() -> None:
     _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
                     "FROM sales.orders o " \
                     "LEFT JOIN auth.users u ON o.created_by = u.id " \
                     "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
-                    "LEFT JOIN catalog.cities c ON w.city = c.id " \
+                    "LEFT JOIN catalog.cities c ON w.city_id = c.id " \
                     "WHERE o.status = 'processing'")
     
-@command("list orders my", "список всех orders my", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+@command("list orders_my", "список всех orders my", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
 def list_orders_my() -> None:
     _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
                     "FROM sales.orders o " \
                     "LEFT JOIN auth.users u ON o.created_by = u.id " \
                     "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
-                    "LEFT JOIN catalog.cities c ON w.city = c.id " \
-                    "WHERE o.created_by = %s", (auth._USER.id,))
+                    "LEFT JOIN catalog.cities c ON w.city_id = c.id " \
+                    f"WHERE o.created_by = {auth._USER.id}")
 
 def _render_order_item(item: Order_item):
     table = Table(show_header=False, box=None, padding=(0, 2))
