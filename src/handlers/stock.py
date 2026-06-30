@@ -20,7 +20,7 @@ from .products import get_list_products
 
 from auth import ROLE_INVENTORY_MANAGER
 import auth
-import handlers.products_completer
+import handlers.products
 
 @dataclass
 class Stock:
@@ -79,37 +79,42 @@ def list_warehouse_stock() -> None:
             options=get_list_warehouses(),
             default="",
         )
-    _handle_list_stocks(f"SELECT id, warehouse_id, product_id, quantity FROM inventory.stocks WHERE warehouse_id = {warehouse_id}")
+    _handle_list_stocks(f"SELECT warehouse_id, product_id, quantity FROM inventory.stocks WHERE warehouse_id = {warehouse_id}")
 
 @command("view product stocks", "список всех stocks товара", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_warehouse_stock() -> None:
-    handlers.products.products_list.clear()
-    products_tmp: dictionary = get_list_products()
-
-    for key, value in products_tmp.items():
-        handlers.products.products_list.append(value)
-
-    product: str = prompt(
+    product_name: str = prompt(
             "Product: ",
-            validator=handlers.products.products_validator,
-            completer=handlers.products.products_completer,
+            validator=handlers.products._get_product_validator(),
+            completer=handlers.products._get_product_completer(),
         ).strip()
-    product_id = next((k for k, v in products_tmp.items() if v == product))
-    _handle_list_stocks(f"SELECT id, warehouse_id, product_id, quantity FROM inventory.stocks WHERE product_id = {product_id}")
+    product_id = handlers.products._get_product_id_by_name(product_name)
+    _handle_list_stocks(f"SELECT warehouse_id, product_id, quantity FROM inventory.stocks WHERE product_id = {product_id}")
 
 @command("list stocks", "список всех stocks", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_stocks() -> None:
-    _handle_list_stocks("SELECT id, warehouse_id, product_id, quantity FROM inventory.stocks")
+    _handle_list_stocks("SELECT warehouse_id, product_id, quantity FROM inventory.stocks")
 
 @command("show stock", "информация о stock", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
-def show_stock(_id: str) -> None:
+def show_stock() -> None:
     conn = get_conn()
+    warehouse_id = choice(
+            message="Склад: ",
+            options=get_list_warehouses(),
+            default="",
+    )
+    product_name: str = prompt(
+            "Product: ",
+            validator=handlers.products._get_product_validator(),
+            completer=handlers.products._get_product_completer(),
+    )
+    product_id = handlers.products._get_product_id_by_name(product_name)
     with conn.cursor(row_factory=class_row(Stock)) as cur:
-        cur.execute("SELECT id, warehouse_id, product_id, quantity FROM inventory.stocks WHERE id = %s", (_id,))
+        cur.execute("SELECT warehouse_id, product_id, quantity FROM inventory.stocks WHERE warehouse_id = %s AND product_id = %s", (warehouse_id,product_id))
         stock: Stock | None = cur.fetchone()
 
     if stock is None:
-        render_error(f"Stock с ID {_id} не найден")
+        render_error(f"Stock {product_name} в {warehouse_id} не найден")
         return
 
     _render_stock(stock)
@@ -118,12 +123,6 @@ def show_stock(_id: str) -> None:
 @command("add stock", "добавить сток", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def add_stock() -> None:
     conn = get_conn()
-
-    handlers.products.products_list.clear()
-    products_tmp: dictionary = get_list_products()
-
-    for key, value in products_tmp.items():
-        handlers.products.products_list.append(value)
 
     enter_product = True
 
@@ -134,13 +133,13 @@ def add_stock() -> None:
             default="",
         )
             
-        product: str = prompt(
+        product_name: str = prompt(
             "Product: ",
-            validator=handlers.products.products_validator,
-            completer=handlers.products.products_completer,
+            validator=handlers.products._get_product_validator(),
+            completer=handlers.products._get_product_completer(),
         ).strip()
 
-        product_id = next((k for k, v in products_tmp.items() if v == product))
+        product_id = handlers.products._get_product_id_by_name(product_name) 
 
         quantity = prompt("Количество: ", validator=PositiveIntValidator()).strip() 
     
@@ -149,4 +148,4 @@ def add_stock() -> None:
             (warehouse_id, product_id, quantity),
         )
 
-    console.print(f"[green]Заказ добавлен [/green]")
+    console.print(f"[green]Stok добавлен [/green]")
