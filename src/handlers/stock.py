@@ -99,10 +99,13 @@ def list_warehouse_stock() -> None:
         completer=handlers.products._get_product_completer(),
     ).strip()
     product_id = handlers.products._get_product_id_by_name(product_name)
-    _handle_list_stocks("""SELECT s.warehouse_id, s.product_id, s.quantity AS common_quantity 
-            FROM inventory.stocks s
-            LEFT JOIN inventory.reserves r ON p.id = r.product_id 
-            WHERE product_id = %s""", (product_id,))
+    _handle_list_stocks("""SELECT s.warehouse_id, s.product_id, s.quantity AS common_quantity, 
+        (SELECT SUM(quantity)    -- коррелированный подзапрос
+         FROM inventory.reserves r
+         WHERE r.product_id = b.book_id) AS reserve, 
+         (s.quantity - reserve) AS available     
+         FROM inventory.stocks s
+         WHERE product_id = %s""", (product_id,))
 
 
 @command("list stocks", "список всех stocks", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
