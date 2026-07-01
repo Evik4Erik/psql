@@ -18,7 +18,7 @@ from validators import PriceValidator, NonEmptyValidator, YesNoValidator, Choice
 from .warehouses import get_list_warehouses
 #from .products import get_list_products
 
-from auth import _USER, ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER
+from auth import auth_user, ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER
 import auth
 import handlers.products
 
@@ -54,6 +54,7 @@ class Order_item:
     quantity: int
     product_id: int
     order_id: int
+    status: str
 
 
 def _render_order(order: Order):  # pylint: disable=unused-argument
@@ -84,10 +85,17 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
     table.add_column("Product_id", style="magenta", min_width=15)
     table.add_column("Quantity", style="yellow", min_width=30)
     table.add_column("Price", style="green", min_width=20)
+    table.add_column("Status", style="green", min_width=20)
 
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Order_item)) as cur:
-        cur.execute("SELECT * FROM sales.order_items WHERE order_id = %s", (order.id,))
+        cur.execute("SELECT oi.order_id, oi.product_id, oi.quantity, oi.price, "
+                    "(CASE "
+                    "   WHEN o.status = 'new' THEN 'pending' "
+                    "END) AS status "
+                    "FROM sales.order_items oi"
+                    "LEFT JOIN sales.order o"
+                    "WHERE order_id = %s", (order.id,))
         order_items: list[Order_item] = cur.fetchall()
 
     for items in order_items:
@@ -96,6 +104,7 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
             str(items.product_id),
             str(items.quantity),
             str(items.price),
+            str(items.status)
         )
     console.print(table)
 
@@ -126,7 +135,7 @@ def _handle_list_orders(query: str):
         )
     console.print(table)
 
-@command("list orders", "список всех orders", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+@command("list orders", "список всех orders", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def list_orders() -> None:
     _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
                         "FROM sales.orders o " \
@@ -134,7 +143,7 @@ def list_orders() -> None:
                         "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
                         "LEFT JOIN catalog.cities c ON w.city_id = c.id")
 
-@command("list orders_new", "список всех orders new", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+@command("list orders_new", "список всех orders new", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_orders_new() -> None:
     _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
                     "FROM sales.orders o " \
@@ -143,7 +152,7 @@ def list_orders_new() -> None:
                     "LEFT JOIN catalog.cities c ON w.city_id = c.id " \
                     "WHERE o.status = 'new'")
     
-@command("list orders_processing", "список всех orders processing", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+@command("list orders_processing", "список всех orders processing", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_orders_processing() -> None:
     _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
                     "FROM sales.orders o " \
@@ -152,14 +161,14 @@ def list_orders_processing() -> None:
                     "LEFT JOIN catalog.cities c ON w.city_id = c.id " \
                     "WHERE o.status = 'processing'")
     
-@command("list orders_my", "список всех orders my", CATEGORY_ORDERS, [ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER])
+@command("list orders_my", "список всех orders my", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_orders_my() -> None:
     _handle_list_orders("SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by " \
                     "FROM sales.orders o " \
                     "LEFT JOIN auth.users u ON o.created_by = u.id " \
                     "LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id " \
                     "LEFT JOIN catalog.cities c ON w.city_id = c.id " \
-                    f"WHERE o.created_by = {auth._USER.id}")
+                    f"WHERE o.created_by = {auth_user().id}")
 
 def _render_order_item(item: Order_item):
     table = Table(show_header=False, box=None, padding=(0, 2))
@@ -207,7 +216,7 @@ def add_order() -> None:
         default="",
     )
 
-    created_by: int = auth._USER.id
+    created_by: int = auth_user().id
     
     conn.execute(
         "INSERT INTO sales.orders (status, total_amount, created_at, warehouse_id, created_by) VALUES (%s, %s, %s, %s, %s)",
@@ -238,11 +247,12 @@ def edit_order(_id: str) -> None:
         options=get_list_warehouses(),
         default="",
     )
+    created_by = auth_user().id
 
     conn.execute(
-        """UPDATE sales.orders SET  total_amount = %s, warehouse_id = %s
+        """UPDATE sales.orders SET  total_amount = %s, warehouse_id = %s, created_by = %s
         WHERE id = %s""",
-        (total_amount, warehouse_id, _id),
+        (total_amount, warehouse_id, created_by, _id),
     )
 
     console.print(f"[green]Заказ {order.id} обновлен [/green]")

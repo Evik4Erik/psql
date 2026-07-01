@@ -22,6 +22,7 @@ from auth import ROLE_INVENTORY_MANAGER
 import auth
 import handlers.products
 
+
 @dataclass
 class Stock:
     id: int
@@ -50,7 +51,8 @@ def _render_stock(stock: Stock):  # pylint: disable=unused-argument
 
     console.print(panel)
 
-def _handle_list_stocks(query: str):
+
+def _handle_list_stocks(query: str, args: tuple):
     conn = get_conn()
     table = Table(title="Stocks", show_header=True, header_style="bold cyan")
 
@@ -60,7 +62,7 @@ def _handle_list_stocks(query: str):
     table.add_column("quantity", style="magenta", min_width=15)
 
     with conn.cursor(row_factory=class_row(Stock)) as cur:
-        cur.execute(query)
+        cur.execute(query, args)
         stocks: list[Stock] = cur.fetchall()
 
     for stock in stocks:
@@ -72,45 +74,80 @@ def _handle_list_stocks(query: str):
         )
     console.print(table)
 
+
 @command("view warehouse stocks", "список всех stocks на складе", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_warehouse_stock() -> None:
     warehouse_id = choice(
-            message="Склад: ",
-            options=get_list_warehouses(),
-            default="",
-        )
-    _handle_list_stocks(f"SELECT warehouse_id, product_id, quantity FROM inventory.stocks WHERE warehouse_id = {warehouse_id}")
+        message="Склад: ",
+        options=get_list_warehouses(),
+        default="",
+    )
+
+    _handle_list_stocks("""SELECT p.name, s.quantity AS common_quantity, r.quantity AS reserved, 
+                                (s.quantity - r.quantity) AS available 
+        FROM catalog.products p 
+        LEFT JOIN inventory.stocks s ON p.id = s.product_id 
+        LEFT JOIN inventory.reserves r ON p.id = r.product_id
+        WHERE warehouse_id = %s""", (warehouse_id,))
+
 
 @command("view product stocks", "список всех stocks товара", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_warehouse_stock() -> None:
     product_name: str = prompt(
-            "Product: ",
-            validator=handlers.products._get_product_validator(),
-            completer=handlers.products._get_product_completer(),
-        ).strip()
+        "Product: ",
+        validator=handlers.products._get_product_validator(),
+        completer=handlers.products._get_product_completer(),
+    ).strip()
     product_id = handlers.products._get_product_id_by_name(product_name)
-    _handle_list_stocks(f"SELECT warehouse_id, product_id, quantity FROM inventory.stocks WHERE product_id = {product_id}")
+    _handle_list_stocks("""SELECT s.warehouse_id, s.product_id, s.quantity AS common_quantity 
+            FROM inventory.stocks s
+            LEFT JOIN inventory.reserves r ON p.id = r.product_id 
+            WHERE product_id = %s""", (product_id,))
+
 
 @command("list stocks", "список всех stocks", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_stocks() -> None:
-    _handle_list_stocks("SELECT warehouse_id, product_id, quantity FROM inventory.stocks")
+    conn = get_conn()
+    table = Table(title="Stocks", show_header=True, header_style="bold cyan")
+
+    table.add_column("ID", style="dim", width=6, justify="right")
+    table.add_column("warehouse_id", style="green", min_width=20)
+    table.add_column("product_id", style="yellow", min_width=30)
+    table.add_column("quantity", style="magenta", min_width=15)
+
+    with conn.cursor(row_factory=class_row(Stock)) as cur:
+        cur.execute("SELECT warehouse_id, product_id, quantity FROM inventory.stocks")
+        stocks: list[Stock] = cur.fetchall()
+
+    for stock in stocks:
+        table.add_row(
+            str(stock.id),
+            str(stock.warehouse_id),
+            str(stock.product_id),
+            str(stock.quantity)
+        )
+    console.print(table)
 
 @command("show stock", "информация о stock", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def show_stock() -> None:
     conn = get_conn()
     warehouse_id = choice(
-            message="Склад: ",
-            options=get_list_warehouses(),
-            default="",
+        message="Склад: ",
+        options=get_list_warehouses(),
+        default="",
     )
     product_name: str = prompt(
-            "Product: ",
-            validator=handlers.products._get_product_validator(),
-            completer=handlers.products._get_product_completer(),
+        "Product: ",
+        validator=handlers.products._get_product_validator(),
+        completer=handlers.products._get_product_completer(),
     )
     product_id = handlers.products._get_product_id_by_name(product_name)
     with conn.cursor(row_factory=class_row(Stock)) as cur:
-        cur.execute("SELECT warehouse_id, product_id, quantity FROM inventory.stocks WHERE warehouse_id = %s AND product_id = %s", (warehouse_id,product_id))
+        cur.execute(
+            "SELECT warehouse_id, product_id, quantity "
+            "FROM inventory.stocks "
+            "WHERE warehouse_id = %s AND product_id = %s",
+            (warehouse_id, product_id))
         stock: Stock | None = cur.fetchone()
 
     if stock is None:
@@ -118,34 +155,3 @@ def show_stock() -> None:
         return
 
     _render_stock(stock)
-
-
-@command("add stock", "добавить сток", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
-def add_stock() -> None:
-    conn = get_conn()
-
-    enter_product = True
-
-    while enter_product:
-        warehouse_id = choice(
-            message="Склад: ",
-            options=get_list_warehouses(),
-            default="",
-        )
-            
-        product_name: str = prompt(
-            "Product: ",
-            validator=handlers.products._get_product_validator(),
-            completer=handlers.products._get_product_completer(),
-        ).strip()
-
-        product_id = handlers.products._get_product_id_by_name(product_name) 
-
-        quantity = prompt("Количество: ", validator=PositiveIntValidator()).strip() 
-    
-        conn.execute(
-            "INSERT INTO inventory.stocks (warehouse_id, product_id, quantity) VALUES (%s, %s, %s)",
-            (warehouse_id, product_id, quantity),
-        )
-
-    console.print(f"[green]Stok добавлен [/green]")

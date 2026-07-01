@@ -98,8 +98,7 @@ CREATE TABLE IF NOT EXISTS  inventory.transfers (
     updated_at TIMESTAMPTZ,
     started_at TIMESTAMPTZ,
     arriving_at TIMESTAMPTZ,
-    received_at TIMESTAMPTZ, -- можно сделать ограничение, чтоб времна были последовательны
-    CONSTRAINT unique_transfer UNIQUE (from_warehouse_id, to_warehouse_id)
+    received_at TIMESTAMPTZ -- можно сделать ограничение, чтоб времна были последовательны
 );
 CREATE TABLE IF NOT EXISTS  inventory.transfer_items (
     id serial PRIMARY KEY,
