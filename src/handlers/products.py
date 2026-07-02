@@ -18,6 +18,7 @@ from auth import ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER
 
 from prompt_toolkit.completion import WordCompleter
 
+
 def get_products_list() -> list[str]:
     conn = get_conn()
     with conn.cursor() as cur:
@@ -28,6 +29,24 @@ def get_products_list() -> list[str]:
         for row in rows:
             products.append(row[0])
 
+        return products
+
+def _get_product_id_by_name(product_name: str) -> int:
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM catalog.products WHERE name = %s", (product_name,))
+        row = cur.fetchone()
+        city_id = row[0]
+
+        return city_id
+
+def _get_product_validator() -> ChoiceValidator:
+    return ChoiceValidator(
+        get_products_list(), message="Product должен быть из списка. Используйте Tab для автодополнения."
+    )
+
+def _get_product_completer() -> WordCompleter:
+    return WordCompleter(get_products_list(), ignore_case=True, sentence=True)
         return products
 
 def _get_product_id_by_name(product_name: str) -> int:

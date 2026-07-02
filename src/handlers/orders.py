@@ -88,14 +88,32 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
     table.add_column("Status", style="green", min_width=20)
 
     conn = get_conn()
+
+    with conn.cursor() as cur:
+        cur.execute("""SELECT status 
+                    FROM sales.orders 
+                    WHERE order_id = %s""", (order.id,))
+
     with conn.cursor(row_factory=class_row(Order_item)) as cur:
-        cur.execute("SELECT oi.order_id, oi.product_id, oi.quantity, oi.price, "
-                    "(CASE "
-                    "   WHEN o.status = 'new' THEN 'pending' "
-                    "END) AS status "
-                    "FROM sales.order_items oi"
-                    "LEFT JOIN sales.order o"
-                    "WHERE order_id = %s", (order.id,))
+        cur.execute("""SELECT oi.order_id, oi.product_id, oi.quantity, oi.price, t.status,
+                    CASE 
+                       WHEN o.status = 'new' THEN 'pending' 
+                       WHEN r.product_id = oi.product_id THEN 'in reserve'
+                       WHEN ti.status = 'planned' OR ti.status = 'arrived' THEN 'in transit'
+                       WHEN di.status = 'planned' THEN 'shipment is scheduled'
+                       WHEN di.status = 'shipped' THEN 'shipped'
+					   ELSE 'pending'
+                    END AS status 
+                    
+                    FROM sales.order_items oi 
+
+                    LEFT JOIN sales.orders o ON o.id = oi.order_id
+                    LEFT JOIN inventory.transfers t ON t.order_id = oi.order_id
+					LEFT JOIN inventory.transfer_items ti ON ti.transfer_id = t.id
+                    LEFT JOIN inventory.reserves r ON r.order_id = oi.order_id
+					LEFT JOIN inventory.delivery_items di ON di.order_id = oi.order_id
+
+                    WHERE order_id = %s""", (order.id,))
         order_items: list[Order_item] = cur.fetchall()
 
     for items in order_items:
@@ -319,24 +337,17 @@ def add_order_item(order_id: str) -> None:
         console.print(f"[yellow]Позиция в заказе {order_id} не может быть добавлена [/yellow]")
         return
         
-    products.products_list.clear()
-
-    products_tmp: dictionary = products.get_list_products()
-
-    for key, value in products_tmp.items():
-        products.products_list.append(value)
-
     enter_product = True
 
     while enter_product:
         product: str = prompt(
             "Product: ",
-            validator=products.products_validator,
-            completer=products.products_completer,
+            validator=handlers.products._get_product_validator(),
+            completer=handlers.products._get_product_completer(),
         ).strip()
 
-        product_id = next((k for k, v in products_tmp.items() if v == product))
-
+        product_id = handlers.products._get_product_id_by_name(product)
+        
         price = Decimal()
 
         with conn.cursor() as cur:
@@ -455,6 +466,7 @@ def delete_order_item(order_id: str, product_id: str) -> None:
 @command("mark order processing", "изменить статус заказа to processing", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def mark_order_processing(_id: str) -> None:
     conn = get_conn()
+    conn.execute("BEGIN")
     with conn.cursor(row_factory=class_row(Order)) as cur:
         cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
         order: Order | None = cur.fetchone()
@@ -467,5 +479,8 @@ def mark_order_processing(_id: str) -> None:
 
     if YesNoValidator.is_yes(answer):
         conn.execute("""UPDATE sales.orders SET  status = 'processing' WHERE id = %s""", (_id,))
+        conn.execute("COMMIT")
         console.print(f"[green]Статус заказа {order.id} изменен на 'processing' [/green]")
+    else:
+        conn.execute("ROLLBACK")
 
