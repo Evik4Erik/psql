@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS  inventory.delivery_items (
 );
 CREATE TABLE IF NOT EXISTS  inventory.transfers (
     id SERIAL PRIMARY KEY,
+    order_id INT REFERENCES sales.orders (id) NOT NULL,
     from_warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL,
     to_warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
