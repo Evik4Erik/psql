@@ -184,7 +184,8 @@ def list_warehouse_stock() -> None:
                         FROM catalog.warehouses w
                         LEFT JOIN common_quantity c ON w.id = c.warehouse_id
                         LEFT JOIN reserves r ON w.id = r.warehouse_id
-                        LEFT JOIN catalog.cities cities ON w.city_id = cities.id""", (product_id, product_id))
+                        LEFT JOIN catalog.cities cities ON w.city_id = cities.id
+                        ORDER BY available DESC """, (product_id, product_id))
         stocks: list[Stock_p_view] = cur.fetchall()
 
     for stock in stocks:
