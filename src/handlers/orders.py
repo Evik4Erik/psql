@@ -93,9 +93,6 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
         cur.execute("""SELECT status 
                     FROM sales.orders 
                     WHERE order_id = %s""", (order.id,))
-    status = 'None'
-
-
 
     with conn.cursor(row_factory=class_row(Order_item)) as cur:
         cur.execute("""SELECT oi.order_id, oi.product_id, oi.quantity, oi.price, t.status,
