@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS inventory.reserves (
 	id serial PRIMARY KEY,
     order_id INT REFERENCES sales.orders (id) NOT NULL,
     product_id INT REFERENCES catalog.products (id) NOT NULL,
+    warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL,
     quantity INT,
     CONSTRAINT unique_reserves UNIQUE (order_id, product_id)
 );
