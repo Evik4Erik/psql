@@ -484,6 +484,6 @@ def mark_order_processing(_id: str) -> None:
     answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
 
     if YesNoValidator.is_yes(answer):
-        conn.execute("""UPDATE sales.orders SET  status = 'processing' WHERE id = %s""", (_id,))
+        conn.execute("""UPDATE sales.orders SET processed_by = %s, status = 'processing' WHERE id = %s""", (auth_user().id, _id,))
         console.print(f"[green]Статус заказа {order.id} изменен на 'processing' [/green]")
 

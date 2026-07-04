@@ -43,6 +43,7 @@ SET city_id =
         ELSE 1
     END;
 
+ALTER TABLE sales.orders ADD COLUMN processed_by INT REFERENCES auth.users (id);
 
 ALTER TABLE catalog.warehouses DROP COLUMN city;
 
