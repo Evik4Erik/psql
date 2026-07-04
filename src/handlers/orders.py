@@ -488,7 +488,7 @@ def mark_order_processing(_id: str) -> None:
     if YesNoValidator.is_yes(answer):
         conn.execute("""UPDATE sales.orders SET processed_by = %s, status = 'processing' WHERE id = %s""", (auth_user().id, _id,))
         conn.execute("COMMIT")
-        console.print(f"[green]Статус заказа {order.id} изменен на 'processing' [/green]")
+
     else:
         conn.execute("ROLLBACK")
 
