@@ -43,6 +43,7 @@ SET city_id =
         ELSE 1
     END;
 
+ALTER TABLE sales.orders ADD COLUMN processed_by INT REFERENCES auth.users (id);
 
 ALTER TABLE catalog.warehouses DROP COLUMN city;
 
@@ -71,6 +72,7 @@ CREATE TABLE IF NOT EXISTS inventory.reserves (
 	id serial PRIMARY KEY,
     order_id INT REFERENCES sales.orders (id) NOT NULL,
     product_id INT REFERENCES catalog.products (id) NOT NULL,
+    warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL,
     quantity INT,
     CONSTRAINT unique_reserves UNIQUE (order_id, product_id)
 );
@@ -87,10 +89,11 @@ CREATE TABLE IF NOT EXISTS  inventory.delivery_items (
     product_id INT REFERENCES catalog.products (id) NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipped')),
     updated_at TIMESTAMPTZ,
-    PRIMARY KEY (delivery_id, product_id)
+    PRIMARY KEY (order_id, product_id)
 );
 CREATE TABLE IF NOT EXISTS  inventory.transfers (
     id SERIAL PRIMARY KEY,
+    order_id INT REFERENCES sales.orders (id) NOT NULL,
     from_warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL,
     to_warehouse_id INT REFERENCES catalog.warehouses (id) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
@@ -98,9 +101,7 @@ CREATE TABLE IF NOT EXISTS  inventory.transfers (
     updated_at TIMESTAMPTZ,
     started_at TIMESTAMPTZ,
     arriving_at TIMESTAMPTZ,
-    received_at TIMESTAMPTZ, -- можно сделать ограничение, чтоб времна были последовательны
-    --PRIMARY KEY (from_city_id, to_city_id),
-    CONSTRAINT unique_transfer UNIQUE (from_city_id, to_city_id)
+    received_at TIMESTAMPTZ -- можно сделать ограничение, чтоб времна были последовательны
 );
 CREATE TABLE IF NOT EXISTS  inventory.transfer_items (
     id serial PRIMARY KEY,

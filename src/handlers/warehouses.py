@@ -80,7 +80,7 @@ def get_list_warehouses() -> list[tuple[str, str]]:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Warehouse)) as cur:
         cur.execute("SELECT w.id, c.city, w.address, w.label, w.is_central FROM catalog.warehouses w  " \
-                    "LEFT JOIN catalog.cities c ON w.city = c.id")
+                    "LEFT JOIN catalog.cities c ON w.city_id = c.id")
         warehouses: list[Warehouse] = cur.fetchall()
 
         list_tupl = [

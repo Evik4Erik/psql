@@ -12,7 +12,7 @@ from console import console, render_error
 from db import get_conn
 
 from commands import command, CATEGORY_ROUTES
-from auth import _USER, ROLE_WORKER, ROLE_INVENTORY_MANAGER
+from auth import auth_user, ROLE_WORKER, ROLE_INVENTORY_MANAGER
 
 from prompt_toolkit.shortcuts import choice
 from .warehouses import get_list_warehouses, _get_city_id_by_name, _get_city_validator, _get_city_completer
