@@ -459,13 +459,15 @@ def ship_transfer(transfer_id: str) -> None:
             duration: datetime = result['duration']
             total_threshold: Decimal = result['total_threshold']
 
-        arriving_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        arriving_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S") + duration
 
         with conn.transaction():
             conn.execute(
             """ UPDATE inventory.transfers SET status = 'int transit', arriving_at = %s WHERE id = %s""", 
             (arriving_at, transfer.id)
             )
+
+            console.print(f"[green]Трансфер отгружен[/green]")
 
 @command("check transfers", "проверка новоприбывших трансферов", CATEGORY_TRANSFERS, [ROLE_WORKER])
 def check_transfers() -> None:  
