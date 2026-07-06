@@ -155,9 +155,9 @@ def _handle_list_orders(query: str, args: list):
 
 def _get_order_list() ->list[str]:
     conn = get_conn()
-    with conn.cursor(row_factory=class_row(Order)) as cur:
+    with conn.cursor() as cur:
         cur.execute("""SELECT o.id FROM sales.orders o """)
-        orders: list[str] = cur.fetchall()
+        orders = [str(row[0]) for row in cur.fetchall()]
 
         return orders
 
@@ -167,7 +167,7 @@ def list_orders() -> None:
                         FROM sales.orders o 
                         LEFT JOIN auth.users u ON o.created_by = u.id 
                         LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id 
-                        LEFT JOIN catalog.cities c ON w.city_id = c.id""")
+                        LEFT JOIN catalog.cities c ON w.city_id = c.id""", ())
 
 @command("list orders_new", "список всех orders new", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_orders_new() -> None:
@@ -176,7 +176,7 @@ def list_orders_new() -> None:
                     LEFT JOIN auth.users u ON o.created_by = u.id 
                     LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id 
                     LEFT JOIN catalog.cities c ON w.city_id = c.id 
-                    WHERE o.status = 'new'""")
+                    WHERE o.status = 'new'""", ())
     
 @command("list orders_processing", "список всех orders processing", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_orders_processing() -> None:
@@ -185,7 +185,7 @@ def list_orders_processing() -> None:
                     LEFT JOIN auth.users u ON o.created_by = u.id 
                     LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id 
                     LEFT JOIN catalog.cities c ON w.city_id = c.id 
-                    WHERE o.status = 'processing'""")
+                    WHERE o.status = 'processing'""", ())
     
 @command("list orders_my", "список всех orders my", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_orders_my() -> None:
@@ -474,7 +474,7 @@ def delete_order_item(order_id: str, product_id: str) -> None:
 @command("mark order_processing", "изменить статус заказа to processing", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def mark_order_processing(_id: str) -> None:
     conn = get_conn()
-    conn.execute("BEGIN")
+
     with conn.cursor(row_factory=class_row(Order)) as cur:
         cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
         order: Order | None = cur.fetchone()
@@ -486,9 +486,6 @@ def mark_order_processing(_id: str) -> None:
     answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
 
     if YesNoValidator.is_yes(answer):
-        conn.execute("""UPDATE sales.orders SET processed_by = %s, status = 'processing' WHERE id = %s""", (auth_user().id, _id,))
-        conn.execute("COMMIT")
-
-    else:
-        conn.execute("ROLLBACK")
+        with conn.transaction():
+            conn.execute("""UPDATE sales.orders SET processed_by = %s, status = 'processing' WHERE id = %s""", (auth_user().id, _id,))
 
