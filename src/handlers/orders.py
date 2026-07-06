@@ -475,17 +475,22 @@ def delete_order_item(order_id: str, product_id: str) -> None:
 def mark_order_processing(_id: str) -> None:
     conn = get_conn()
 
-    with conn.cursor(row_factory=class_row(Order)) as cur:
-        cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
-        order: Order | None = cur.fetchone()
+    with conn.transaction():
+        with conn.cursor(row_factory=class_row(Order)) as cur:
+            cur.execute("SELECT * FROM sales.orders WHERE id = %s FOR UPDATE", (_id,))
+            order: Order | None = cur.fetchone()
 
-    if order is None:
-        render_error(f"Заказ с ID {_id} не найден")
-        return
+        if order is None:
+            render_error(f"Заказ с ID {_id} не найден")
+            return
 
-    answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
+        if order.status != 'new':
+            render_error(f"Некорректный статус заказа с ID {_id}")
+            return
 
-    if YesNoValidator.is_yes(answer):
-        with conn.transaction():
-            conn.execute("""UPDATE sales.orders SET processed_by = %s, status = 'processing' WHERE id = %s""", (auth_user().id, _id,))
+        answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
+
+        if YesNoValidator.is_yes(answer):
+            with conn.transaction():
+                conn.execute("""UPDATE sales.orders SET processed_by = %s, status = 'processing' WHERE id = %s""", (auth_user().id, _id,))
 
