@@ -217,7 +217,7 @@ def start_shipping(transfer_id: int) -> None:
         if YesNoValidator.is_yes(answer):
             with conn.transaction():
                 with conn.cursor(row_factory=DictRowFactory) as cur:
-                    cur.execute("SELECT status FROM inventory.transfers WHERE id = %s FOR SHARE", (transfer_id,))
+                    cur.execute("SELECT status FROM inventory.transfers WHERE id = %s FOR UPDATE", (transfer_id,))
                     result = cur.fetchone()
 
                     if not result:
@@ -277,23 +277,30 @@ def add_transfer_item() -> None:
         created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
         with conn.transaction():
+            conn.set_isolation_level(REPEATABLE_READ)
             with conn.cursor() as cur:
-                #TO DO  advisory locks(int)  hash text('transfer_insert_(from):(to)')
-                # set begin isolation repeatable read
-                cur.execute("""SELECT id FROM inventory.transfers 
-                            WHERE status = 'planned' AND transfer_id = %s FOR SHARE""",
-                            (transfer_id,))
-                row: int | None = cur.fetchone()
+                lock_hash: str = f'transfer_insert_{from_warehouse_id}:{to_warehouse_id}'
+                cur.execute("SELECT pg_try_advisory_xact_lock(%s)", (lock_hash,))
+                is_locked = cur.fetchone()[0]
 
-                if row is None:
-                    cur.execute(
-                        """INSERT INTO inventory.transfers 
-                        (order_id, from_warehouse_id, to_warehouse_id, status, created_at) 
-                        VALUES (%s, %s, %s, %s, %s) 
-                        RETURNING id""",
-                        (order_id, from_warehouse_id, to_warehouse_id, status, created_at),
-                    )
-                    transfer_id: int = cur.fetchone()[0]
+                if not is_locked:
+                    cur.execute("""SELECT id FROM inventory.transfers 
+                                WHERE status = 'planned' AND transfer_id = %s""",
+                                (transfer_id,))
+                    row: int | None = cur.fetchone()
+
+                    if row is None:
+                        cur.execute(
+                            """INSERT INTO inventory.transfers 
+                            (order_id, from_warehouse_id, to_warehouse_id, status, created_at) 
+                            VALUES (%s, %s, %s, %s, %s) 
+                            RETURNING id""",
+                            (order_id, from_warehouse_id, to_warehouse_id, status, created_at),
+                        )
+                        transfer_id: int = cur.fetchone()[0]
+                    else:
+                        console.print("[red]Обнаружена блокировка. could not serialize access due to concurrent update[/red]")
+                        return
 
     enter_product = True
 
@@ -333,7 +340,7 @@ def add_transfer_item() -> None:
         with conn.transaction():
             with conn.cursor() as cur:
                 cur.execute(
-                    """SELECT quantity FROM inventory.stocks WHERE warehouse_id = %s AND product_id = %s FOR SHARE""",
+                    """SELECT quantity FROM inventory.stocks WHERE warehouse_id = %s AND product_id = %s FOR UPDATE""",
                     (from_warehouse_id, product_id))
                 row: int = cur.fetchone()
                 prev_quantity: int = row[0]
@@ -347,7 +354,6 @@ def add_transfer_item() -> None:
                 console.print(f"[red] Статус трансфера был изменен другим пользователем с 'planned' на {row[0]}[/red")
                 return
 
-            # TO DO  advisory locks(int)  hash text('transfer_insert_(from):(to)')
             if prev_quantity - int(quantity) >= 0:
                 conn.execute(
                     "INSERT INTO inventory.transfer_items "
@@ -446,7 +452,7 @@ def remove_transfer_item() -> None:
             with conn.cursor(row_factory=class_row(Transfer)) as cur:
                 cur.execute("""SELECT id, order_id, from_warehouse_id, to_warehouse_id, 
                                created_at, status, updated_at, started_at, arriving_at, received_at 
-                            FROM inventory.transfers WHERE id = %s FOR UPDATE""", (transfer_id,))
+                            FROM inventory.transfers WHERE id = %s FOR SHARE""", (transfer_id,))
                 transfer: Transfer | None = cur.fetchone()
 
                 if transfer is None:
