@@ -1,6 +1,4 @@
 from dataclasses import dataclass
-from decimal import Decimal
-from datetime import datetime, timezone
 
 from rich.panel import Panel
 from rich.table import Table
@@ -8,27 +6,35 @@ from psycopg.rows import class_row
 from prompt_toolkit import prompt
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.shortcuts import choice
-from sqlalchemy.dialects.oracle import dictionary
 
 from commands import command, CATEGORY_ORDERS
 from console import console, render_error
 from db import get_conn
-from validators import PriceValidator, NonEmptyValidator, YesNoValidator, ChoiceValidator, PositiveIntValidator
+from validators import ChoiceValidator
 
 from .warehouses import get_list_warehouses
 from .products import get_list_products
 
 from auth import ROLE_INVENTORY_MANAGER
-import auth
 import handlers.products
+
+from typing import Any, Sequence
+from psycopg import Cursor
+
+class DictRowFactory:
+    def __init__(self, cursor: Cursor[Any]):
+        self.fields = [c.name for c in cursor.description]
+
+    def __call__(self, values: Sequence[Any]) -> dict[str, Any]:
+        return dict(zip(self.fields, values))
 
 
 def get_stocks_list(warehouse_id: str) -> list[str]:
     conn = get_conn()
     with conn.cursor() as cur:
-        cur.execute("SELECT p.name, s.quantity FROM inventory.stocks s " \
-        "LEFT JOIN catalog.products p ON s.product_id = p.id " \
-        "WHERE s.warehouse_id = %s", (warehouse_id,))
+        cur.execute("""SELECT p.name, s.quantity FROM inventory.stocks s 
+        LEFT JOIN catalog.products p ON s.product_id = p.id 
+        WHERE s.warehouse_id = %s""", (warehouse_id,))
         rows: list = cur.fetchall()
 
         products: list[str] = []
@@ -101,14 +107,7 @@ class Stock_w_view:
     reserved: int
     available: int
 
-@command("view warehouse stocks", "список всех stocks на складе", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
-def list_warehouse_stock() -> None:
-    warehouse_id = choice(
-        message="Склад: ",
-        options=get_list_warehouses(),
-        default="",
-    )
-
+def handle_warehouse_stock(warehouse_id: int) -> None:
     conn = get_conn()
     table = Table(title=f"Warehouse stocks #id {warehouse_id}", show_header=True, header_style="bold cyan")
 
@@ -151,6 +150,15 @@ def list_warehouse_stock() -> None:
         )
     console.print(table)
 
+@command("view warehouse stocks", "список всех stocks на складе", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
+def list_warehouse_stock() -> None:
+    warehouse_id = choice(
+        message="Склад: ",
+        options=get_list_warehouses(),
+        default="",
+    )
+    handle_warehouse_stock(warehouse_id)
+
 @dataclass
 class Stock_p_view:
     id: int
@@ -161,16 +169,14 @@ class Stock_p_view:
     reserved: int
     available: int
 
-@command("view product stocks", "список всех stocks товара", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
-def list_warehouse_stock() -> None:
-    product_name: str = prompt(
-        "Product: ",
-        validator=handlers.products._get_product_validator(),
-        completer=handlers.products._get_product_completer(),
-    ).strip()
-    product_id = handlers.products._get_product_id_by_name(product_name)
-
+def handle_product_stock(product_id: int) -> None:  
     conn = get_conn()
+    with conn.cursor(row_factory=DictRowFactory) as cur:
+        cur.execute("SELECT name FROM catalog.products WHERE id = %s", (product_id,))
+        result: str = cur.fetchone()
+        product_name: str = result['name']
+
+
     table = Table(title=f"Product stocks {product_name}", show_header=True, header_style="bold cyan")
 
     table.add_column("ID", style="dim", width=6, justify="right")
@@ -195,11 +201,10 @@ def list_warehouse_stock() -> None:
                                 WHERE product_id = %s
                             )
 
-
                         SELECT w.id, cities.city, w.address, w.is_central,  
                         COALESCE(r.quantity, 0) AS reserved,
                         COALESCE(a.quantity, 0) AS available,
-                        COALESCE(a.quantity, 0) + COALESCE(r.quantity, 0) AS common_quantity,  
+                        COALESCE(a.quantity, 0) + COALESCE(r.quantity, 0) AS common_quantity  
                         FROM catalog.warehouses w
                         LEFT JOIN available a ON w.id = a.warehouse_id
                         LEFT JOIN reserves r ON w.id = r.warehouse_id
@@ -218,6 +223,17 @@ def list_warehouse_stock() -> None:
             str(stock.available)
         )
     console.print(table)
+
+@command("view product stocks", "список всех stocks товара", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
+def list_product_stock() -> None:
+    product_name: str = prompt(
+        "Product: ",
+        validator=handlers.products._get_product_validator(),
+        completer=handlers.products._get_product_completer(),
+    ).strip()
+    product_id = handlers.products._get_product_id_by_name(product_name)
+    handle_product_stock(product_id)
+
 
 
 @command("list stocks", "список всех stocks", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
