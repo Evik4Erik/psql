@@ -1,0 +1,1 @@
+ALTER TABLE auth.users ADD COLUMN warehouse_id INT REFERENCES catalog.warehouses (id);
