@@ -16,7 +16,7 @@ from db import get_conn
 from validators import PriceValidator, NonEmptyValidator, YesNoValidator, ChoiceValidator, PositiveIntValidator
 
 from .warehouses import get_list_warehouses
-#from .products import get_list_products
+from .stock import handle_product_stock
 
 from auth import auth_user, ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER
 import auth
@@ -51,6 +51,13 @@ class Order:
 
 @dataclass
 class Order_item:
+    price: Decimal
+    quantity: int
+    product_id: int
+    order_id: int
+
+@dataclass
+class Order_item_st:
     price: Decimal
     quantity: int
     product_id: int
@@ -91,12 +98,7 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
 
     conn = get_conn()
 
-    with conn.cursor() as cur:
-        cur.execute("""SELECT status 
-                    FROM sales.orders 
-                    WHERE order_id = %s""", (order.id,))
-
-    with conn.cursor(row_factory=class_row(Order_item)) as cur:
+    with conn.cursor(row_factory=class_row(Order_item_st)) as cur:
         cur.execute("""SELECT oi.order_id, oi.product_id, oi.quantity, oi.price, t.status,
                     CASE 
                        WHEN o.status = 'new' THEN 'pending' 
@@ -110,13 +112,13 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
                     FROM sales.order_items oi 
 
                     LEFT JOIN sales.orders o ON o.id = oi.order_id
-                    LEFT JOIN inventory.transfers t ON t.order_id = oi.order_id
+                    LEFT JOIN inventory.transfers t ON t.id = oi.order_id
 					LEFT JOIN inventory.transfer_items ti ON ti.transfer_id = t.id
                     LEFT JOIN inventory.reserves r ON r.order_id = oi.order_id
 					LEFT JOIN inventory.delivery_items di ON di.order_id = oi.order_id
 
-                    WHERE order_id = %s""", (order.id,))
-        order_items: list[Order_item] = cur.fetchall()
+                    WHERE oi.order_id = %s""", (order.id,))
+        order_items: list[Order_item_st] = cur.fetchall()
 
     for items in order_items:
         table.add_row(
@@ -232,7 +234,10 @@ def _render_order_item(item: Order_item):
 def show_order(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Order)) as cur:
-        cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
+        cur.execute("""SELECT id, status, total_amount, created_at, warehouse_id, 
+                    created_by, processed_by 
+                    FROM sales.orders 
+                    WHERE id = %s""", (_id,))
         order: Order | None = cur.fetchone()
 
     if order is None:
@@ -268,7 +273,10 @@ def add_order() -> None:
 def edit_order(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Order)) as cur:
-        cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
+        cur.execute("""SELECT id, status, total_amount, created_at, warehouse_id, 
+                    created_by, processed_by  
+                    FROM sales.orders 
+                    WHERE id = %s""", (_id,))
         order: Order | None = cur.fetchone()
 
     if order is None:
@@ -300,7 +308,10 @@ def edit_order(_id: str) -> None:
 def delete_order(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Order)) as cur:
-        cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
+        cur.execute("""SELECT id, status, total_amount, created_at, warehouse_id, 
+                    created_by, processed_by
+                    FROM sales.orders 
+                    WHERE id = %s""", (_id,))
         order: Order | None = cur.fetchone()
 
     if order is None:
@@ -325,7 +336,10 @@ def delete_order(_id: str) -> None:
 def publish_order(_id: str) -> None:
     conn = get_conn()
     with conn.cursor(row_factory=class_row(Order)) as cur:
-        cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
+        cur.execute("""SELECT id, status, total_amount, created_at, warehouse_id, 
+                    created_by, processed_by 
+                    FROM sales.orders 
+                    WHERE id = %s""", (_id,))
         order: Order | None = cur.fetchone()
 
     if order is None:
@@ -420,7 +434,9 @@ def edit_order_item(order_id: str, product_id: str) -> None:
         return
     
     with conn.cursor(row_factory=class_row(Order_item)) as cur:
-        cur.execute("SELECT * FROM sales.order_items WHERE order_id = %s AND product_id = %s", 
+        cur.execute("""SELECT price, quantity, product_id, order_id 
+                    FROM sales.order_items 
+                    WHERE order_id = %s AND product_id = %s""", 
                     (order_id, product_id))
         item: Order_item | None = cur.fetchone()
 
@@ -488,7 +504,10 @@ def mark_order_processing(_id: str) -> None:
     conn = get_conn()
 
     with conn.cursor(row_factory=class_row(Order)) as cur:
-        cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
+        cur.execute("""SELECT id, status, total_amount, created_at, warehouse_id, 
+                    created_by, processed_by 
+                    FROM sales.orders 
+                    WHERE id = %s""", (_id,))
         order: Order | None = cur.fetchone()
 
     if order is None:
@@ -513,4 +532,33 @@ def mark_order_processing(_id: str) -> None:
 
 @command("process_order", "обработать заказ", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def process_order(order_id: str) -> None:
-    return
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Order)) as cur:
+        cur.execute("""SELECT id, status, total_amount, created_at, warehouse_id, 
+                    created_by, processed_by 
+                    FROM sales.orders 
+                    WHERE id = %s""", (order_id,))
+        order: Order | None = cur.fetchone()
+
+    if order is None:
+        render_error(f"Заказ с ID {order_id} не найден")
+        return
+
+    _render_order(order)
+
+    if order.status != 'processing':
+        render_error(f"Некорректный статус заказа с ID {order_id}")
+        return
+    
+    with conn.cursor(row_factory=class_row(Order_item)) as cur:
+        cur.execute("""SELECT order_id, product_id, quantity, price 
+                    FROM sales.order_items 
+                    WHERE order_id = %s""", 
+                    (order_id,))
+        items: list[Order_item] = cur.fetchall()
+
+    if len(items) == 0:
+        render_error(f"В заказе отсутствуют позиции")
+        return
+
+    handle_product_stock(order.warehouse_id)
