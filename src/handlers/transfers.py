@@ -482,7 +482,41 @@ def remove_transfer_item() -> None:
 
 @command("list transfers_shipping", "список трансферов на отправку", CATEGORY_TRANSFERS, [ROLE_WORKER])
 def list_transfers_shipping() -> None:  
-    handle_list_transfers('shipping')
+    conn = get_conn()
+    table = Table(title="Перемещения", show_header=True, header_style="bold cyan")
+
+    table.add_column("ID")
+    table.add_column("Order_id")
+    table.add_column("from_warehouse_id")
+    table.add_column("to_warehouse_id")
+    table.add_column("created_at")
+    table.add_column("status")
+    table.add_column("updated_at")
+    table.add_column("started_at")
+    table.add_column("arriving_at")
+    table.add_column("received_at")
+
+    with conn.cursor(row_factory=class_row(Transfer)) as cur:
+        cur.execute("""SELECT id, order_id, from_warehouse_id, to_warehouse_id, created_at, status,  
+                    updated_at, started_at, arriving_at, received_at  
+                    FROM inventory.transfers
+                    WHERE status = 'shipping' AND from_warehouse_id = %s""", (auth.auth_user().warehouse_id,))
+        transfers: list[Transfer] = cur.fetchall()
+
+    for transfer in transfers:
+        table.add_row(
+            str(transfer.id),
+            str(transfer.order_id),
+            str(transfer.from_warehouse_id),
+            str(transfer.to_warehouse_id),
+            str(transfer.created_at),
+            str(transfer.status),
+            str(transfer.updated_at),
+            str(transfer.started_at),
+            str(transfer.arriving_at),
+            str(transfer.received_at)
+        )
+    console.print(table)
 
 @command("ship transfer", "отгрузить трансфер", CATEGORY_TRANSFERS, [ROLE_WORKER])
 def ship_transfer(transfer_id: str) -> None:  
@@ -490,7 +524,8 @@ def ship_transfer(transfer_id: str) -> None:
         with conn.cursor(row_factory=class_row(Transfer)) as cur:
             cur.execute("""SELECT id, order_id, from_warehouse_id, to_warehouse_id, 
                         created_at, status, updated_at, started_at, arriving_at, received_at 
-                        FROM inventory.transfers WHERE id = %s FOR UPDATE""", (transfer_id,))
+                        FROM inventory.transfers WHERE id = %s AND from_warehouse_id = %s""", 
+                        (transfer_id, auth.auth_user().warehouse_id,))
             transfer: Transfer | None = cur.fetchone()
 
         if transfer is None:
@@ -499,10 +534,13 @@ def ship_transfer(transfer_id: str) -> None:
         
         _render_transfer(transfer)
 
+        if transfer.status != 'planned':
+            render_error(f"Transfer status not planned! Current status - {transfer.status}")
+            return
+
         with conn.cursor(row_factory=DictRowFactory) as cur:
             cur.execute("""SELECT distinct
-                            r.duration, 
-                            r.total_threshold
+                            r.duration
                         FROM inventory.routes r
                         LEFT JOIN catalog.warehouses w_from ON w_from.city_id = r.from_city_id  
                         LEFT JOIN catalog.warehouses w_to ON r.to_city_id = w_to.city_id
@@ -510,13 +548,26 @@ def ship_transfer(transfer_id: str) -> None:
             result = cur.fetchone()
 
             duration: datetime = result['duration']
-            total_threshold: Decimal = result['total_threshold']
 
         arriving_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S") + duration
 
         with conn.transaction():
+            with conn.cursor(row_factory=Transfer) as cur:
+                cur.execute("""SELECT id, order_id, from_warehouse_id, to_warehouse_id, 
+                            created_at, status, updated_at, started_at, arriving_at, received_at 
+                            FROM inventory.transfers WHERE id = %s FOR SHARE""", (transfer_id,))
+                transfer: Transfer | None = cur.fetchone()
+
+            if transfer is None:
+                render_error("Cannot get transfer")
+                return
+            
+            if transfer.status != 'planned':
+                render_error(f"Transfer status not planned! Current status - {transfer.status}")
+                return
+        
             conn.execute(
-            """ UPDATE inventory.transfers SET status = 'int transit', arriving_at = %s WHERE id = %s""", 
+            """ UPDATE inventory.transfers SET status = 'in_transit', arriving_at = %s WHERE id = %s""", 
             (arriving_at, transfer.id)
             )
 
@@ -525,20 +576,180 @@ def ship_transfer(transfer_id: str) -> None:
 @command("check transfers", "проверка новоприбывших трансферов", CATEGORY_TRANSFERS, [ROLE_WORKER])
 def check_transfers() -> None:  
         conn = get_conn()
-        with conn.cursor(row_factory=class_row(Transfer)) as cur:
-            cur.execute("""SELECT id, order_id, from_warehouse_id, to_warehouse_id, 
-                        created_at, status, updated_at, started_at, arriving_at, received_at 
-                        FROM inventory.transfers WHERE status = 'in transit' AND arriving_at < %s""", 
-                        (datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")))
-            transfers: list[Transfer] = cur.fetchall()
+        with conn.transaction():
+            with conn.cursor(row_factory=class_row(Transfer)) as cur:
+                cur.execute("""SELECT id, order_id, from_warehouse_id, to_warehouse_id, 
+                            created_at, status, updated_at, started_at, arriving_at, received_at 
+                            FROM inventory.transfers 
+                            WHERE status = 'in_transit' AND arriving_at < %s AND from_warehouse_id = %s
+                            FOR SHARE""", 
+                            (datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"), 
+                            auth.auth_user().warehouse_id,))
+                transfers: list[Transfer] = cur.fetchall()
 
+                if len(transfers) == 0:
+                    console.print(f"[yellow]No arrived transfers [/yellow]")
+                    return
+                
+                for transfer in transfers:
+                    conn.execute(
+                    """ UPDATE inventory.transfers SET status = 'arrived' WHERE id = %s""", 
+                    (transfer.id,)
+                    )
 
 
 @command("receive transfers", "разгрузка трансфера", CATEGORY_TRANSFERS, [ROLE_WORKER])
 def receive_transfers(transfer_id: str) -> None:  
-    return
+        conn = get_conn()
+        with conn.transaction():
+            with conn.cursor(row_factory=class_row(Transfer)) as cur:
+                cur.execute("""SELECT id, order_id, from_warehouse_id, to_warehouse_id, 
+                            created_at, status, updated_at, started_at, arriving_at, received_at 
+                            FROM inventory.transfers 
+                            WHERE id = %s AND from_warehouse_id = %s
+                            FOR SHARE""", 
+                            (transfer_id, auth.auth_user().warehouse_id,))
+                transfer: Transfer | None = cur.fetchone()
 
-@command("ship delivery", "отгрузка заказа", CATEGORY_TRANSFERS, [ROLE_WORKER])
-def ship_delivery() -> None:
-    return
+                if transfer is None:
+                    console.print(f"[yellow]No arrived transfers [/yellow]")
+                    return
+                
+                if transfer.status != 'arrived':
+                    console.print(f"[red]Transfer status not arrived [/red]")
+                    return
+
+                with conn.cursor(row_factory=class_row(Transfer_item)) as cur:
+                    cur.execute("""SELECT id, transfer_id, product_id, status, 
+                                quantity, updated_at, requested_by, reserve_id
+                        FROM inventory.transfer_items WHERE transfer_id = %s FOR SHARE""", 
+                        (transfer.id,))
+                    items: list[Transfer_item] = cur.fetchall()
+
+                    for item in items:
+                        if item.status == 'shipped':
+                            conn.execute(
+                                """ UPDATE inventory.transfer_items SET status = 'received' WHERE id = %s""", 
+                                (item.id,)) 
+                            
+                            if item.reserve_id is None:
+                                with conn.cursor(row_factory=DictRowFactory) as cur:
+                                    cur.execute("""SELECT quantiry 
+                                        FROM inventory.stocks 
+                                        WHERE warehouse_id = %s AND product_id = %s 
+                                        FOR SHARE""", 
+                                        (transfer.to_warehouse_id, item.product_id))
+                                    result = cur.fetchone()
+                                    stock_quantity: int = result['quantity']
+
+                                conn.execute(
+                                """ UPDATE inventory.stocks SET quantity = %s 
+                                WHERE warehouse_id = %s AND product_id = %s""", 
+                                (stock_quantity + item.quantity, transfer.to_warehouse_id, item.product_id)) 
+                            else:
+                                conn.execute(
+                                """ INSERT INTO inventory.reserves (order_id, product_id, quantity, warehouse_id) 
+                                VALUES (%s, %s, %s, %s) """, 
+                                (transfer.id, item.product_id, item.quantity, transfer.to_warehouse_id)) 
+    
+
+delivery_states = [
+    'planned',
+    'shipping',
+    'shipped',
+]
+
+delivery_item_states = [
+    'planned',
+    'shipped'
+]
+
+@dataclass
+class Delivery:
+    order_id: int
+    created_at: datetime
+    status: str
+    updated_at: datetime
+    shipped_at: datetime
+
+@dataclass
+class Delivery_item:
+    order_id: int
+    product_id: int
+    status: str
+    quantity: int
+    updated_at: datetime
+
+def _render_delivery(delivery: Delivery):  # pylint: disable=unused-argument
+    table = Table(show_header=False, box=None, padding=(0, 2))
+
+    table.add_column("Поле", style="bold cyan", width=15)
+    table.add_column("Значение", style="white")
+
+    table.add_row("Order_id", str(delivery.order_id))
+    table.add_row("created_at", str(delivery.created_at))
+    table.add_row("status", str(delivery.status))
+    table.add_row("updated_at", str(delivery.updated_at))
+    table.add_row("shipped_at", str(delivery.shipped_at))
+
+    panel = Panel(
+        table,
+        expand=False,
+        title=f"[bold green]Delivery #{delivery.order_id}[/bold green]",
+        border_style="green",
+    )
+
+    console.print(panel)
+
+    table = Table(title="Delivery_items", show_header=True, header_style="bold cyan")
+
+    table.add_column("Order_id", style="magenta", min_width=15)
+    table.add_column("Product_id", style="magenta", min_width=15)
+    table.add_column("Status", style="yellow", min_width=30)
+    table.add_column("Quantity", style="yellow", min_width=30)
+    table.add_column("updated_at", style="magenta", min_width=15)
+
+    conn = get_conn()
+    with conn.cursor(row_factory=class_row(Delivery_item)) as cur:
+        cur.execute("""SELECT order_id, product_id, status, quantity, updated_at 
+                    FROM inventory.delivery_items 
+                    WHERE order_id = %s""", (delivery.order_id,))
+        delivery_items: list[Delivery_item] = cur.fetchall()
+
+    for items in delivery_items:
+        table.add_row(
+            str(items.order_id),
+            str(items.product_id),
+            items.status,
+            str(items.quantity),
+            str(items.updated_at)
+        )
+    console.print(table)
+
+@command("ship delivery", "отгрузка доставки", CATEGORY_TRANSFERS, [ROLE_WORKER])
+def ship_delivery(delivery_id: int) -> None:
+    conn = get_conn()
+    with conn.transaction():
+        with conn.cursor(row_factory=Delivery) as cur:
+            cur.execute("""SELECT order_id, created_at, status, updated_at, shipped_at 
+                        FROM inventory.deliveries WHERE order_id = %s FOR SHARE""", (delivery_id,))
+            delivery: Delivery | None = cur.fetchone()
+
+        if delivery is None:
+            render_error("Cannot get delivery")
+            return
+        
+        _render_delivery(delivery)
+
+        if delivery.status != 'planned':
+            render_error(f"Delivery status not planned! Current status - {delivery.status}")
+            return
+    
+        updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+        conn.execute(
+        """ UPDATE inventory.deliveries SET status = 'shipping', arriving_at = %s WHERE order_id = %s""", 
+        (updated_at, delivery.order_id))
+
+        console.print(f"[green]Доставка отгружена[/green]")
 
