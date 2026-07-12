@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS  inventory.delivery_items (
     order_id INT REFERENCES inventory.deliveries (order_id) NOT NULL,
     product_id INT REFERENCES catalog.products (id) NOT NULL,
     status TEXT NOT NULL CHECK ( status IN ('planned', 'shipped')),
+    quantity INT NOT NULL, 
     updated_at TIMESTAMPTZ,
     PRIMARY KEY (order_id, product_id)
 );
