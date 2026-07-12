@@ -510,3 +510,7 @@ def mark_order_processing(_id: str) -> None:
 
                 if order is not None and order.status == 'new':
                     conn.execute("""UPDATE sales.orders SET processed_by = %s, status = 'processing' WHERE id = %s""", (auth_user().id, _id,))
+
+@command("process_order", "обработать заказ", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
+def process_order(order_id: str) -> None:
+    return
