@@ -48,6 +48,7 @@ transfer_item_states = [
     'received'
 ]
 
+
 @dataclass
 class Transfer:
     id: int
@@ -55,18 +56,19 @@ class Transfer:
     from_warehouse_id: int
     to_warehouse_id: int
     created_at: datetime
-    status: str 
+    status: str
     updated_at: datetime
     started_at: datetime
     arriving_at: datetime
     received_at: datetime
+
 
 @dataclass
 class Transfer_item:
     id: int
     transfer_id: int
     product_id: int
-    status: str 
+    status: str
     quantity: int
     updated_at: datetime
     requested_by: int
@@ -128,6 +130,7 @@ def _render_transfer(transfer: Transfer):  # pylint: disable=unused-argument
         )
     console.print(table)
 
+
 def _render_transfer_item(item: Transfer_item):
     table = Table(show_header=False, box=None, padding=(0, 2))
 
@@ -176,16 +179,16 @@ def handle_list_transfers(status: str) -> None:
 
     for transfer in transfers:
         table.add_row(
-                str(transfer.id),
-                str(transfer.order_id),
-                str(transfer.from_warehouse_id),
-                str(transfer.to_warehouse_id),
-                str(transfer.created_at),
-                str(transfer.status), 
-                str(transfer.updated_at),
-                str(transfer.started_at),
-                str(transfer.arriving_at),
-                str(transfer.received_at)
+            str(transfer.id),
+            str(transfer.order_id),
+            str(transfer.from_warehouse_id),
+            str(transfer.to_warehouse_id),
+            str(transfer.created_at),
+            str(transfer.status),
+            str(transfer.updated_at),
+            str(transfer.started_at),
+            str(transfer.arriving_at),
+            str(transfer.received_at)
         )
     console.print(table)
 
@@ -196,31 +199,40 @@ def list_transfer_planned() -> None:
 @command("start shipping", "отправить перемещение", CATEGORY_TRANSFERS, [ROLE_INVENTORY_MANAGER])
 def start_shipping(transfer_id: int) -> None:
     conn = get_conn()
+    with conn.transaction():
+        with conn.cursor(row_factory=class_row(Transfer)) as cur:
+            cur.execute("""SELECT id, order_id, from_warehouse_id, to_warehouse_id, created_at, status,  
+                        updated_at, started_at, arriving_at, received_at  
+                        FROM inventory.transfers WHERE id = %s""", (transfer_id,))
+            transfer: Transfer | None = cur.fetchone()
 
-    with conn.cursor(row_factory=class_row(Transfer)) as cur:
-        cur.execute("""SELECT id, order_id, from_warehouse_id, to_warehouse_id, created_at, status,  
-                    updated_at, started_at, arriving_at, received_at  
-                    FROM inventory.transfers WHERE id = %s""", (transfer_id,))
-        transfer: Transfer | None = cur.fetchone()
 
-    if transfer is None:
-        render_error(f"Трансфер с ID {transfer_id} не найден")
-        return
+        if transfer is None:
+            render_error(f"Трансфер с ID {transfer_id} не найден")
+            return
 
-    answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
+        answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
 
-    if YesNoValidator.is_yes(answer):
-        with conn.transaction():
-            conn.execute(
-                """ UPDATE inventory.transfers SET status = 'shipping' WHERE id = %s""", 
-                (transfer_id,)
-            )
-            conn.execute(
-                """ UPDATE inventory.transfer_items SET status = 'shipping' WHERE transfer_id = %s""", 
-                (transfer_id,)
-            )
 
-        console.print(f"[green]Статус перемещения {transfer.id} изменен на 'shipping' [/green]")
+        if YesNoValidator.is_yes(answer):
+            with conn.transaction():
+                with conn.cursor(row_factory=DictRowFactory) as cur:
+                    cur.execute("SELECT status FROM inventory.transfers WHERE id = %s FOR UPDATE", (transfer_id,))
+                    result = cur.fetchone()
+
+                    if not result:
+                        return
+
+                    status: str = result['status']
+                    if status != 'planned':
+                        return
+
+                    conn.execute(
+                        """ UPDATE inventory.transfers SET status = 'shipping' WHERE id = %s""",
+                        (transfer_id,)
+                    )
+
+                    console.print(f"[green]Статус перемещения {transfer.id} изменен на 'shipping' [/green]")
 
 
 @command("add transfer_item", "добавить позицию в перемещение", CATEGORY_TRANSFERS, [ROLE_INVENTORY_MANAGER])
@@ -241,14 +253,16 @@ def add_transfer_item() -> None:
 
     with conn.cursor() as cur:
         cur.execute("SELECT id FROM inventory.transfers " \
-        "WHERE status = 'planned' AND from_warehouse_id = %s AND to_warehouse_id = %s", 
-        (from_warehouse_id, to_warehouse_id))
+                    "WHERE status = 'planned' AND from_warehouse_id = %s AND to_warehouse_id = %s",
+                    (from_warehouse_id, to_warehouse_id))
         row: int | None = cur.fetchone()
 
     status = 'planned'
     requested_by = auth.auth_user().id
 
-    if(row is not None ):
+    transfer_id: int = 0
+
+    if row is not None:
         console.print(f"[yellow]Плановый трансфер из {from_warehouse_id} в {to_warehouse_id} уже существует[/yellow]")
         transfer_id = row[0]
     else:
@@ -260,19 +274,34 @@ def add_transfer_item() -> None:
             completer=WordCompleter(orders, ignore_case=True, sentence=True),
         )
 
-        created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S") 
-        
+        created_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
         with conn.transaction():
+            conn.set_isolation_level(REPEATABLE_READ)
             with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO inventory.transfers "
-                    "(order_id, from_warehouse_id, to_warehouse_id, status, created_at) " \
-                    "VALUES (%s, %s, %s, %s, %s) "
-                    "RETURNING id",
-                    (order_id, from_warehouse_id, to_warehouse_id, status, created_at),
-                )
-                transfer_id: int = cur.fetchone()[0]
-        
+                lock_hash: str = f'transfer_insert_{from_warehouse_id}:{to_warehouse_id}'
+                cur.execute("SELECT pg_try_advisory_xact_lock(%s)", (lock_hash,))
+                is_locked = cur.fetchone()[0]
+
+                if not is_locked:
+                    cur.execute("""SELECT id FROM inventory.transfers 
+                                WHERE status = 'planned' AND transfer_id = %s""",
+                                (transfer_id,))
+                    row: int | None = cur.fetchone()
+
+                    if row is None:
+                        cur.execute(
+                            """INSERT INTO inventory.transfers 
+                            (order_id, from_warehouse_id, to_warehouse_id, status, created_at) 
+                            VALUES (%s, %s, %s, %s, %s) 
+                            RETURNING id""",
+                            (order_id, from_warehouse_id, to_warehouse_id, status, created_at),
+                        )
+                        transfer_id: int = cur.fetchone()[0]
+                    else:
+                        console.print("[red]Обнаружена блокировка. could not serialize access due to concurrent update[/red]")
+                        return
+
     enter_product = True
 
     while enter_product:
@@ -280,7 +309,7 @@ def add_transfer_item() -> None:
 
         if len(stocks) == 0:
             render_error(f"На складе {from_warehouse_id} отсутствует остаток по всем продуктам, выберете другой склад")
-            return;
+            return
 
         product_name: str = prompt(
             "Product: ",
@@ -290,8 +319,8 @@ def add_transfer_item() -> None:
 
         product_id = handlers.products._get_product_id_by_name(product_name.split()[0])
         with conn.cursor() as cur:
-            cur.execute("""SELECT quantity FROM inventory.stocks WHERE warehouse_id = %s AND product_id = %s""", 
-            (from_warehouse_id, product_id))
+            cur.execute("""SELECT quantity FROM inventory.stocks WHERE warehouse_id = %s AND product_id = %s""",
+                        (from_warehouse_id, product_id))
             row: int = cur.fetchone()
             prev_quantity: int = row[0]
 
@@ -300,25 +329,28 @@ def add_transfer_item() -> None:
                 answer = prompt("Хотите выбрать другую позицию? (y/n, д/н): ", validator=YesNoValidator())
                 enter_product = YesNoValidator.is_yes(answer)
                 continue
-           
-        quantity: str = prompt("Количество: ", validator=PositiveIntValidator(max_val=prev_quantity + 1), default=str(prev_quantity))
-        updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")  # Output: 2026-06-11T12:40:00.123456+00:00
-        
+
+        quantity: str = prompt("Количество: ", validator=PositiveIntValidator(max_val=prev_quantity + 1),
+                               default=str(prev_quantity))
+        updated_at = datetime.now(timezone.utc).strftime(
+            "%Y-%m-%d %H:%M:%S")  # Output: 2026-06-11T12:40:00.123456+00:00
+
         reserve_id = None
 
         with conn.transaction():
             with conn.cursor() as cur:
-                cur.execute("""SELECT quantity FROM inventory.stocks WHERE warehouse_id = %s AND product_id = %s FRO UPDATE""", 
-                (from_warehouse_id, product_id))
+                cur.execute(
+                    """SELECT quantity FROM inventory.stocks WHERE warehouse_id = %s AND product_id = %s FOR UPDATE""",
+                    (from_warehouse_id, product_id))
                 row: int = cur.fetchone()
                 prev_quantity: int = row[0]
 
             with conn.cursor() as cur:
-                cur.execute("SELECT status FROM inventory.transfers WHERE id = %s", (transfer_id))
+                cur.execute("SELECT status FROM inventory.transfers WHERE id = %s FOR SHARE", (transfer_id))
                 row: str = cur.fetchone()
                 status: str = row[0]
 
-            if(status != 'planned' ):
+            if status != 'planned':
                 console.print(f"[red] Статус трансфера был изменен другим пользователем с 'planned' на {row[0]}[/red")
                 return
 
@@ -331,7 +363,7 @@ def add_transfer_item() -> None:
                 )
 
                 conn.execute(
-                    """ UPDATE inventory.stocks SET quantity = %s WHERE warehouse_id = %s AND product_id = %s""", 
+                    """ UPDATE inventory.stocks SET quantity = %s WHERE warehouse_id = %s AND product_id = %s""",
                     (prev_quantity - int(quantity), from_warehouse_id, product_id)
                 )
 
@@ -342,7 +374,7 @@ def add_transfer_item() -> None:
 
 
 @command("remove transfer_item", "удалить позицию из перемещения", CATEGORY_TRANSFERS, [ROLE_INVENTORY_MANAGER])
-def remove_transfer_item() -> None:  
+def remove_transfer_item() -> None:
     transfer_list: list[str, str] = []
     conn = get_conn()
 
@@ -363,19 +395,18 @@ def remove_transfer_item() -> None:
                     SELECT DISTINCT ti.transfer_id, t.city_from, t.address_from, t.city_to, t.address_to  
                     FROM inventory.transfer_items ti
                     LEFT JOIN transfer_warehouses t ON ti.transfer_id = t.id
-                    WHERE ti.requested_by = %s""", 
+                    WHERE ti.requested_by = %s""",
                     (auth.auth_user().id,))
         for id, city_from, address_from, city_to, address_to in cur.fetchall():
             transfer_list.append([str(id), str(city_from + ' ' + address_from + ' -> ' + city_to + ' ' + address_to)])
 
-
     if len(transfer_list) == 0:
         console.print(f"Не найден трансфер с requested_by = {auth.auth_user().id}")
         return
-    
+
     transfer_id = choice(
         message="Трансфер: ",
-        options= transfer_list,
+        options=transfer_list,
         default="",
     )
 
@@ -400,32 +431,54 @@ def remove_transfer_item() -> None:
         transfer_items: list[str] = [str(row[0]) for row in cur.fetchall()]
 
     transfer_item_id = prompt(
-            "Transfer item для удаления: ",
-            validator =  ChoiceValidator(transfer_items, message="Трансфер должен быть из списка. Используйте Tab для автодополнения."),
-            completer = WordCompleter(transfer_items, ignore_case=True, sentence=True),
-        ).strip()
-    
+        "Transfer item для удаления: ",
+        validator=ChoiceValidator(transfer_items,
+                                  message="Трансфер должен быть из списка. Используйте Tab для автодополнения."),
+        completer=WordCompleter(transfer_items, ignore_case=True, sentence=True),
+    ).strip()
+
     with conn.cursor() as cur:
-        cur.execute("""SELECT quantity FROM inventory.transfer_items WHERE id = %s FOR UPDATE""", (transfer_item_id, ))
+        cur.execute("""SELECT quantity FROM inventory.transfer_items WHERE id = %s""", (transfer_item_id,))
         row: int = cur.fetchone()
         prev_quantity: int | None = row[0] if row else None
 
-    quantity = prompt("Какое кол-во удалить? : ", validator=PositiveIntValidator(max_val=prev_quantity + 1), default=str(prev_quantity)).strip()
+    quantity = prompt("Какое кол-во удалить? : ", validator=PositiveIntValidator(max_val=prev_quantity + 1),
+                      default=str(prev_quantity)).strip()
 
     answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
 
     if YesNoValidator.is_yes(answer):
-        if prev_quantity - int(quantity) > 0:
-            with conn.transaction():
-                conn.execute(
-                """ UPDATE inventory.transfer_items SET quantity = %s WHERE id = %s""", 
-                (prev_quantity - int(quantity), transfer_item_id)
-                )
-        else:
-            with conn.transaction():
-                conn.execute("DELETE FROM inventory.transfer_items WHERE id = %s", (transfer_item_id,))
+        with conn.transaction():
+            with conn.cursor(row_factory=class_row(Transfer)) as cur:
+                cur.execute("""SELECT id, order_id, from_warehouse_id, to_warehouse_id, 
+                               created_at, status, updated_at, started_at, arriving_at, received_at 
+                            FROM inventory.transfers WHERE id = %s FOR SHARE""", (transfer_id,))
+                transfer: Transfer | None = cur.fetchone()
 
-        
+                if transfer is None:
+                    render_error("Cannot get transfer")
+                    return
+
+                if transfer.status in ['in transit', 'arrived']:
+                    render_error(f"Cannot delete transfer in status {transfer.status}")
+                    return
+
+                with conn.cursor() as cur:
+                    cur.execute("""SELECT quantity FROM inventory.transfer_items WHERE id = %s FOR UPDATE""",
+                                (transfer_item_id,))
+                    row: int = cur.fetchone()
+                    prev_quantity: int | None = row[0] if row else None
+
+                if prev_quantity is None:
+                    return
+
+                if prev_quantity - int(quantity) > 0:
+                    conn.execute(
+                        """ UPDATE inventory.transfer_items SET quantity = %s WHERE id = %s""",
+                        (prev_quantity - int(quantity), transfer_item_id)
+                    )
+                else:
+                    conn.execute("DELETE FROM inventory.transfer_items WHERE id = %s", (transfer_item_id,))
 
 @command("list transfers_shipping", "список трансферов на отправку", CATEGORY_TRANSFERS, [ROLE_WORKER])
 def list_transfers_shipping() -> None:  
@@ -488,3 +541,4 @@ def receive_transfers(transfer_id: str) -> None:
 @command("ship delivery", "отгрузка заказа", CATEGORY_TRANSFERS, [ROLE_WORKER])
 def ship_delivery() -> None:
     return
+
