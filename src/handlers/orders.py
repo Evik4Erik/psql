@@ -46,6 +46,7 @@ class Order:
     created_at: datetime
     warehouse_id: int
     created_by: str
+    processed_by: str
 
 
 @dataclass
@@ -69,6 +70,7 @@ def _render_order(order: Order):  # pylint: disable=unused-argument
     table.add_row("Created at", str(order.created_at))
     table.add_row("Warehouse", str(order.warehouse_id))
     table.add_row("Created_by", str(order.created_by))
+    table.add_row("Processed_by", str(order.processed_by))
 
     panel = Panel(
         table,
@@ -133,10 +135,11 @@ def _handle_list_orders(query: str, args: list):
 
     table.add_column("ID", style="dim", width=6, justify="right")
     table.add_column("Status", style="green", min_width=20)
-    table.add_column("Total amount", style="yellow", min_width=30)
+    table.add_column("Total amount", style="yellow", min_width=10)
     table.add_column("Created at", style="magenta", min_width=15)
     table.add_column("Warehouse", style="blue", min_width=20)
     table.add_column("Created by", style="red", min_width=20)
+    table.add_column("Processed by", style="red", min_width=20)
 
     with conn.cursor(row_factory=class_row(Order)) as cur:
         cur.execute(query, args)
@@ -150,40 +153,57 @@ def _handle_list_orders(query: str, args: list):
             str(order.created_at),
             str(order.warehouse_id),
             str(order.created_by),
+            str(order.processed_by)
         )
     console.print(table)
 
+def _get_order_list() ->list[str]:
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("""SELECT o.id FROM sales.orders o """)
+        orders = [str(row[0]) for row in cur.fetchall()]
+
+        return orders
+
 @command("list orders", "список всех orders", CATEGORY_ORDERS, [ROLE_SALES_MANAGER])
 def list_orders() -> None:
-    _handle_list_orders("""SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by 
+    _handle_list_orders("""SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by, 
+                        u1.username as processed_by 
                         FROM sales.orders o 
                         LEFT JOIN auth.users u ON o.created_by = u.id 
+                        LEFT JOIN auth.users u1 ON o.processed_by = u1.id 
                         LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id 
-                        LEFT JOIN catalog.cities c ON w.city_id = c.id""")
+                        LEFT JOIN catalog.cities c ON w.city_id = c.id""", ())
 
 @command("list orders_new", "список всех orders new", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_orders_new() -> None:
-    _handle_list_orders("""SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by 
+    _handle_list_orders("""SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by, 
+                     u1.username as processed_by  
                     FROM sales.orders o 
                     LEFT JOIN auth.users u ON o.created_by = u.id 
+                    LEFT JOIN auth.users u1 ON o.processed_by = u1.id 
                     LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id 
                     LEFT JOIN catalog.cities c ON w.city_id = c.id 
-                    WHERE o.status = 'new'""")
+                    WHERE o.status = 'new'""", ())
     
 @command("list orders_processing", "список всех orders processing", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_orders_processing() -> None:
-    _handle_list_orders("""SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by 
+    _handle_list_orders("""SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by, 
+                    u1.username as processed_by  
                     FROM sales.orders o 
                     LEFT JOIN auth.users u ON o.created_by = u.id 
+                    LEFT JOIN auth.users u1 ON o.processed_by = u1.id 
                     LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id 
                     LEFT JOIN catalog.cities c ON w.city_id = c.id 
-                    WHERE o.status = 'processing'""")
+                    WHERE o.status = 'processing'""", ())
     
 @command("list orders_my", "список всех orders my", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def list_orders_my() -> None:
-    _handle_list_orders("""SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by 
+    _handle_list_orders("""SELECT o.id, o.status, o.total_amount, o.created_at, c.city as warehouse_id, u.username as created_by, 
+                    u1.username as processed_by  
                     FROM sales.orders o 
                     LEFT JOIN auth.users u ON o.created_by = u.id 
+                    LEFT JOIN auth.users u1 ON o.processed_by = u1.id 
                     LEFT JOIN catalog.warehouses w ON o.warehouse_id = w.id 
                     LEFT JOIN catalog.cities c ON w.city_id = c.id
                     WHERE o.created_by = %s""", (auth_user().id,))
@@ -337,24 +357,17 @@ def add_order_item(order_id: str) -> None:
         console.print(f"[yellow]Позиция в заказе {order_id} не может быть добавлена [/yellow]")
         return
         
-    products.products_list.clear()
-
-    products_tmp: dictionary = products.get_list_products()
-
-    for key, value in products_tmp.items():
-        products.products_list.append(value)
-
     enter_product = True
 
     while enter_product:
         product: str = prompt(
             "Product: ",
-            validator=products.products_validator,
-            completer=products.products_completer,
+            validator=handlers.products._get_product_validator(),
+            completer=handlers.products._get_product_completer(),
         ).strip()
 
-        product_id = next((k for k, v in products_tmp.items() if v == product))
-
+        product_id = handlers.products._get_product_id_by_name(product)
+        
         price = Decimal()
 
         with conn.cursor() as cur:
@@ -470,9 +483,10 @@ def delete_order_item(order_id: str, product_id: str) -> None:
         conn.execute("DELETE FROM sales.order_items WHERE order_id = %s AND product_id = %s", (order_id, product_id))
         recalc_order(order_id)
 
-@command("mark order processing", "изменить статус заказа to processing", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
+@command("mark order_processing", "изменить статус заказа to processing", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def mark_order_processing(_id: str) -> None:
     conn = get_conn()
+
     with conn.cursor(row_factory=class_row(Order)) as cur:
         cur.execute("SELECT * FROM sales.orders WHERE id = %s", (_id,))
         order: Order | None = cur.fetchone()
@@ -481,9 +495,18 @@ def mark_order_processing(_id: str) -> None:
         render_error(f"Заказ с ID {_id} не найден")
         return
 
+    if order.status != 'new':
+        render_error(f"Некорректный статус заказа с ID {_id}")
+        return
+
     answer = prompt("Вы уверены? (y/n, д/н): ", validator=YesNoValidator())
 
     if YesNoValidator.is_yes(answer):
-        conn.execute("""UPDATE sales.orders SET processed_by = %s, status = 'processing' WHERE id = %s""", (auth_user().id, _id,))
-        console.print(f"[green]Статус заказа {order.id} изменен на 'processing' [/green]")
+        with conn.transaction():
+            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            with conn.cursor(row_factory=class_row(Order)) as cur:
+                cur.execute("SELECT * FROM sales.orders WHERE id = %s FOR UPDATE", (_id,))
+                order: Order | None = cur.fetchone()
 
+                if order is not None and order.status == 'new':
+                    conn.execute("""UPDATE sales.orders SET processed_by = %s, status = 'processing' WHERE id = %s""", (auth_user().id, _id,))

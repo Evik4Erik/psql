@@ -23,9 +23,31 @@ import auth
 import handlers.products
 
 
+def get_stocks_list(warehouse_id: str) -> list[str]:
+    conn = get_conn()
+    with conn.cursor() as cur:
+        cur.execute("SELECT p.name, s.quantity FROM inventory.stocks s " \
+        "LEFT JOIN catalog.products p ON s.product_id = p.id " \
+        "WHERE s.warehouse_id = %s", (warehouse_id,))
+        rows: list = cur.fetchall()
+
+        products: list[str] = []
+        for row in rows:
+            products.append(row[0] + ' - ' + str(row[1]))
+
+        return products
+
+def _get_stock_validator(warehouse_id: str) -> ChoiceValidator:
+    return ChoiceValidator(
+        get_stocks_list(warehouse_id), message="Product должен быть из списка. Используйте Tab для автодополнения."
+    )
+
+def _get_stock_completer(warehouse_id: str) -> WordCompleter:
+    return WordCompleter(get_stocks_list(warehouse_id), ignore_case=True, sentence=True)
+
+
 @dataclass
 class Stock:
-    id: int
     warehouse_id: int
     product_id: int
     quantity: int
@@ -37,7 +59,6 @@ def _render_stock(stock: Stock):  # pylint: disable=unused-argument
     table.add_column("Поле", style="bold cyan", width=15)
     table.add_column("Значение", style="white")
 
-    table.add_row("ID", str(stock.id))
     table.add_row("Warehouse_id", str(stock.warehouse_id))
     table.add_row("Product_id", str(stock.product_id))
     table.add_row("Quantity", str(stock.quantity))
@@ -56,7 +77,6 @@ def _handle_list_stocks(query: str, args: tuple):
     conn = get_conn()
     table = Table(title="Stocks", show_header=True, header_style="bold cyan")
 
-    table.add_column("ID", style="dim", width=6, justify="right")
     table.add_column("warehouse_id", style="green", min_width=20)
     table.add_column("product_id", style="yellow", min_width=30)
     table.add_column("quantity", style="magenta", min_width=15)
@@ -67,7 +87,6 @@ def _handle_list_stocks(query: str, args: tuple):
 
     for stock in stocks:
         table.add_row(
-            str(stock.id),
             str(stock.warehouse_id),
             str(stock.product_id),
             str(stock.quantity)
@@ -217,12 +236,12 @@ def list_stocks() -> None:
 
     for stock in stocks:
         table.add_row(
-            str(stock.id),
             str(stock.warehouse_id),
             str(stock.product_id),
             str(stock.quantity)
         )
     console.print(table)
+
 
 @command("show stock", "информация о stock", CATEGORY_ORDERS, [ROLE_INVENTORY_MANAGER])
 def show_stock() -> None:
