@@ -561,4 +561,7 @@ def process_order(order_id: str) -> None:
         render_error(f"В заказе отсутствуют позиции")
         return
 
+    answer = prompt("Добавить с текущего склада или искать на других складах? (y/n, д/н): ", validator=YesNoValidator())
+
+
     handle_product_stock(order.warehouse_id)
