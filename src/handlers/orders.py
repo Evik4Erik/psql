@@ -8,19 +8,27 @@ from psycopg.rows import class_row
 from prompt_toolkit import prompt
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.shortcuts import choice
-from sqlalchemy.dialects.oracle import dictionary
 
 from commands import command, CATEGORY_ORDERS
 from console import console, render_error
 from db import get_conn
-from validators import PriceValidator, NonEmptyValidator, YesNoValidator, ChoiceValidator, PositiveIntValidator
+from validators import PriceValidator, YesNoValidator, ChoiceValidator, PositiveIntValidator
 
 from .warehouses import get_list_warehouses
 from .stock import handle_product_stock
 
-from auth import auth_user, ROLE_CATALOG_MANAGER, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER
-import auth
+from auth import auth_user, ROLE_SALES_MANAGER, ROLE_INVENTORY_MANAGER
 import handlers.products
+
+from typing import Any, Sequence
+from psycopg import Cursor
+
+class DictRowFactory:
+    def __init__(self, cursor: Cursor[Any]):
+        self.fields = [c.name for c in cursor.description]
+
+    def __call__(self, values: Sequence[Any]) -> dict[str, Any]:
+        return dict(zip(self.fields, values))
 
 
 states = [
@@ -30,6 +38,11 @@ states = [
     'pending',
     'packing',
     'shipped'
+]
+
+chooses = [
+    'Add to reserve from the current warehouse',
+    'Search other warehouses'
 ]
 
 states_completer = WordCompleter(states, ignore_case=True, sentence=True)
@@ -561,7 +574,52 @@ def process_order(order_id: str) -> None:
         render_error(f"В заказе отсутствуют позиции")
         return
 
-    answer = prompt("Добавить с текущего склада или искать на других складах? (y/n, д/н): ", validator=YesNoValidator())
+    for item in items:
+        console.print(f"[grey]Обработка заказа {item.order_id} - товар {item.product_id}[/grey]")
+        handle_product_stock(item.product_id)
 
+        with conn.cursor(row_factory=DictRowFactory) as cur:
+            cur.execute("""SELECT quantity 
+                     FROM inventory.stocks 
+                     WHERE product_id = %s AND warehouse_id = %s""", 
+                     (item.product_id, order.warehouse_id))
+            result = cur.fetchone()
+            stock_quantity: int = result['quantity']
 
-    handle_product_stock(order.warehouse_id)
+        searchOtherWarehouses: bool = True
+
+        if stock_quantity < item.quantity:
+            answer = prompt("Искать на других складах? (y/n, д/н): ", validator=YesNoValidator())
+            if YesNoValidator.is_no(answer):
+                return
+        else:
+            choose: str = choice(
+                message = "Варианты резервации товара - ",
+                options=chooses,
+                default=""
+            ).strip()
+
+        if searchOtherWarehouses:
+            handle_product_stock(item.product_id)
+        else:
+            with conn.transaction():
+                conn.set_isolation_level(REPEATABLE_READ)
+                with conn.cursor(row_factory=DictRowFactory) as cur:
+                    cur.execute("""SELECT quantity 
+                        FROM inventory.stocks 
+                        WHERE product_id = %s AND warehouse_id = %s""", 
+                        (item.product_id, order.warehouse_id))
+                result = cur.fetchone()
+                stock_quantity: int = result['quantity']
+                
+                if stock_quantity < item.quantity:
+                    render_error(f"В стоке склада {order.warehouse_id} недостоточное количество позиции {item.product_id}")
+                    return
+                
+                conn.execute("""INSERT INTO inventory.reserves (order_id, product_id, quantity, warehouse_id) 
+                             VALUES (%s, %s, %s, %s)""", (order.id, item.product_id, item.quantity, order.warehouse_id))
+                conn.execute("""UPDATE inventory.stocks 
+                             SET quantity = %s
+                             WHERE warehouse_id = %s AND product_id = %s""", 
+                             (stock_quantity - item.quantity, order.warehouse_id, item.product_id))
+
