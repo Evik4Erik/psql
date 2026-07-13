@@ -41,8 +41,8 @@ states = [
 ]
 
 chooses = [
-    'Add to reserve from the current warehouse',
-    'Search other warehouses'
+    (1, 'Add to reserve from the current warehouse'),
+    (2, 'Search other warehouses')
 ]
 
 states_completer = WordCompleter(states, ignore_case=True, sentence=True)
@@ -575,7 +575,7 @@ def process_order(order_id: str) -> None:
         return
 
     for item in items:
-        console.print(f"[grey]Обработка заказа {item.order_id} - товар {item.product_id}[/grey]")
+        console.print(f"[blue]Обработка заказа {item.order_id} - товар {item.product_id}[/blue]")
         handle_product_stock(item.product_id)
 
         with conn.cursor(row_factory=DictRowFactory) as cur:
@@ -584,33 +584,53 @@ def process_order(order_id: str) -> None:
                      WHERE product_id = %s AND warehouse_id = %s""", 
                      (item.product_id, order.warehouse_id))
             result = cur.fetchone()
-            stock_quantity: int = result['quantity']
+            stock_quantity: int  = result['quantity'] if result else 0
 
         searchOtherWarehouses: bool = True
 
         if stock_quantity < item.quantity:
             answer = prompt("Искать на других складах? (y/n, д/н): ", validator=YesNoValidator())
             if YesNoValidator.is_no(answer):
-                return
+                continue
         else:
+
             choose: str = choice(
                 message = "Варианты резервации товара - ",
                 options=chooses,
                 default=""
-            ).strip()
+            )
+
+            searchOtherWarehouses = choose != 1 
 
         if searchOtherWarehouses:
-            handle_product_stock(item.product_id)
+            with conn.cursor(row_factory=DictRowFactory) as cur:
+                cur.execute("""SELECT warehouse_id 
+                     FROM inventory.stocks 
+                     WHERE product_id = %s AND quantity > 0""", 
+                     (item.product_id, ))
+                warehouses = cur.fetchall()
+
+                if len(warehouses) == 0:
+                    console.print(f"[red]На складах отсутствует товар {item.product_id}[/red]")
+                    continue
+
+            warehouse: str = choice(
+                message = "Выберите склад ",
+                options=warehouses,
+                default=""
+            ).strip()
+            
+            console.print(f"[green]Товар {item.product_id} зарезервирован на складе {warehouse} для заказа {order.id}[/green]")
         else:
             with conn.transaction():
-                conn.set_isolation_level(REPEATABLE_READ)
+                #conn.set_isolation_level(REPEATABLE_READ)
                 with conn.cursor(row_factory=DictRowFactory) as cur:
                     cur.execute("""SELECT quantity 
                         FROM inventory.stocks 
-                        WHERE product_id = %s AND warehouse_id = %s""", 
+                        WHERE product_id = %s AND warehouse_id = %s FOR SHARE""", 
                         (item.product_id, order.warehouse_id))
-                result = cur.fetchone()
-                stock_quantity: int = result['quantity']
+                    result = cur.fetchone()
+                    stock_quantity: int = result['quantity']
                 
                 if stock_quantity < item.quantity:
                     render_error(f"В стоке склада {order.warehouse_id} недостоточное количество позиции {item.product_id}")
@@ -622,4 +642,10 @@ def process_order(order_id: str) -> None:
                              SET quantity = %s
                              WHERE warehouse_id = %s AND product_id = %s""", 
                              (stock_quantity - item.quantity, order.warehouse_id, item.product_id))
+                
+                console.print(f"[green]Товар {item.product_id} добавлен в резерв для заказа {order.id}[/green]")
+
+    conn.execute("""UPDATE sales.orders 
+                    SET status = 'packing'
+                    WHERE id = %s """, ( order.id,))   
 
